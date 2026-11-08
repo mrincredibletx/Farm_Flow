@@ -78,7 +78,10 @@ export async function simulateRisk(payload: {
 
 function generateClientTerrainSimulation(
   coordinates: [number, number][],
-  resolution: number = 20
+  resolution: number = 20,
+  soilType: string = 'clay',
+  cropType: string = 'Wheat',
+  rainfallMm: number = 65.0
 ): TerrainAnalysisResponse {
   const lngs = coordinates.map((c) => c[0]);
   const lats = coordinates.map((c) => c[1]);
