@@ -9,7 +9,8 @@ import { MapLegend } from '@/components/Map/MapLegend';
 import { ElevationGridInspector } from '@/components/Dashboard/ElevationGridInspector';
 import { analyzeTerrain, fetchSampleFields } from '@/lib/api';
 import { TerrainAnalysisResponse, SampleField } from '@/lib/types';
-import { AlertCircle, X } from 'lucide-react';
+import { generateAgronomicPDFReport } from '@/lib/pdfExport';
+import { AlertCircle, X, Box, Map as MapIcon, Loader2 } from 'lucide-react';
 
 // Dynamic import of FieldMap to disable SSR for Leaflet
 const FieldMap = dynamic(
@@ -20,7 +21,23 @@ const FieldMap = dynamic(
       <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-cyan-400 gap-3">
         <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
         <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
-          Initializing Map Canvas...
+          Initializing 2D GIS Map...
+        </span>
+      </div>
+    ),
+  }
+);
+
+// Dynamic import of Three.js 3D Terrain Viewer
+const TerrainViewer3D = dynamic(
+  () => import('@/components/Terrain3D/TerrainViewer3D').then((mod) => mod.TerrainViewer3D),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-cyan-400 gap-3">
+        <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+        <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
+          Generating Three.js 3D Terrain Mesh...
         </span>
       </div>
     ),
@@ -28,6 +45,7 @@ const FieldMap = dynamic(
 );
 
 export default function Home() {
+  const [viewMode, setViewMode] = useState<'2D' | '3D'>('2D');
   const [coordinates, setCoordinates] = useState<[number, number][]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -48,13 +66,18 @@ export default function Home() {
         setCoordinates(uem.coordinates);
         setSelectedLocation({ lat: uem.center[1], lng: uem.center[0] });
         // Automatically analyze initial field for instant evaluation presentation
-        handleAnalyze(uem.coordinates);
+        handleAnalyze(uem.coordinates, 'clay', 'Wheat', 65);
       }
     });
   }, []);
 
-  // Run Hydrology Analysis
-  const handleAnalyze = async (customCoords?: [number, number][]) => {
+  // Run Hydrology & Phase II Analysis
+  const handleAnalyze = async (
+    customCoords?: [number, number][],
+    soil: string = 'clay',
+    crop: string = 'Wheat',
+    rainfall: number = 65
+  ) => {
     const coordsToAnalyze = customCoords || coordinates;
     if (coordsToAnalyze.length < 3) return;
 
@@ -63,11 +86,11 @@ export default function Home() {
     setIsDrawing(false);
 
     try {
-      const data = await analyzeTerrain(coordsToAnalyze);
+      const data = await analyzeTerrain(coordsToAnalyze, 20, soil, crop, rainfall);
       setAnalysisData(data);
     } catch (err: any) {
       console.error('Terrain analysis error:', err);
-      setErrorMessage(err.message || 'Failed to complete terrain analysis. Please check your network or boundary.');
+      setErrorMessage(err.message || 'Failed to complete terrain analysis. Please check your boundary.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -77,7 +100,6 @@ export default function Home() {
     setCoordinates(field.coordinates);
     setSelectedLocation({ lat: field.center[1], lng: field.center[0] });
     setAnalysisData(null);
-    // Auto-run analysis for seamless presentation demo
     handleAnalyze(field.coordinates);
   };
 
@@ -98,10 +120,20 @@ export default function Home() {
     setSelectedLocation({ lat, lng });
   };
 
+  const handleDownloadPDF = () => {
+    if (!analysisData) return;
+    generateAgronomicPDFReport(analysisData);
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-brand-void">
       {/* Top Header */}
-      <Header />
+      <Header
+        viewMode={viewMode}
+        onToggleViewMode={setViewMode}
+        onDownloadPDF={handleDownloadPDF}
+        hasAnalysisData={!!analysisData}
+      />
 
       {/* Main App Workspace */}
       <div className="flex-1 flex flex-col-reverse lg:flex-row relative overflow-hidden">
@@ -112,7 +144,7 @@ export default function Home() {
           onToggleDrawing={() => setIsDrawing(!isDrawing)}
           onUndoPoint={handleUndoPoint}
           onClear={handleClear}
-          onAnalyze={() => handleAnalyze()}
+          onAnalyze={(soil, crop, rain) => handleAnalyze(coordinates, soil, crop, rain)}
           isAnalyzing={isAnalyzing}
           analysisData={analysisData}
           sampleFields={sampleFields}
@@ -120,55 +152,62 @@ export default function Home() {
           onOpenGridInspector={() => setIsGridInspectorOpen(true)}
         />
 
-        {/* Center / Right 2D Map Area */}
+        {/* Center / Right Visual Area: 2D GIS Map or 3D Terrain Mesh */}
         <div className="flex-1 relative h-[50vh] lg:h-full">
-          {/* Floating Search Bar (Top Left over map) */}
-          <div className="absolute top-4 left-4 z-20">
-            <SearchBar onSelectLocation={handleSelectLocation} />
-          </div>
-
-          {/* Floating Map Legend (Bottom Left over map) */}
-          <div className="absolute bottom-6 left-4 z-20 hidden sm:block">
-            <MapLegend
-              opacity={overlayOpacity}
-              onOpacityChange={setOverlayOpacity}
-              showMarkers={showSinkMarkers}
-              onToggleMarkers={() => setShowSinkMarkers(!showSinkMarkers)}
-              minElevation={analysisData?.metrics?.min_elevation}
-              maxElevation={analysisData?.metrics?.max_elevation}
-            />
-          </div>
-
-          {/* Error Banner Notification */}
-          {errorMessage && (
-            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 max-w-md w-full px-4 py-3 glass-panel-elevated rounded-xl border border-rose-500/50 text-xs text-rose-300 flex items-center justify-between gap-3 shadow-2xl">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{errorMessage}</span>
+          {viewMode === '2D' ? (
+            <>
+              {/* Floating Search Bar (Top Left over 2D map) */}
+              <div className="absolute top-4 left-4 z-20">
+                <SearchBar onSelectLocation={handleSelectLocation} />
               </div>
-              <button
-                onClick={() => setErrorMessage(null)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
 
-          {/* 2D Interactive Leaflet Map */}
-          <FieldMap
-            coordinates={coordinates}
-            onCoordinatesChange={(newCoords) => {
-              setCoordinates(newCoords);
-              if (analysisData) setAnalysisData(null);
-            }}
-            analysisData={analysisData}
-            isDrawing={isDrawing}
-            setIsDrawing={setIsDrawing}
-            overlayOpacity={overlayOpacity}
-            showSinkMarkers={showSinkMarkers}
-            selectedLocation={selectedLocation}
-          />
+              {/* Floating Map Legend (Bottom Left over 2D map) */}
+              <div className="absolute bottom-6 left-4 z-20 hidden sm:block">
+                <MapLegend
+                  opacity={overlayOpacity}
+                  onOpacityChange={setOverlayOpacity}
+                  showMarkers={showSinkMarkers}
+                  onToggleMarkers={() => setShowSinkMarkers(!showSinkMarkers)}
+                  minElevation={analysisData?.metrics?.min_elevation}
+                  maxElevation={analysisData?.metrics?.max_elevation}
+                />
+              </div>
+
+              {/* Error Banner Notification */}
+              {errorMessage && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 max-w-md w-full px-4 py-3 glass-panel-elevated rounded-xl border border-rose-500/50 text-xs text-rose-300 flex items-center justify-between gap-3 shadow-2xl">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                  <button
+                    onClick={() => setErrorMessage(null)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* 2D Interactive Leaflet Map */}
+              <FieldMap
+                coordinates={coordinates}
+                onCoordinatesChange={(newCoords) => {
+                  setCoordinates(newCoords);
+                  if (analysisData) setAnalysisData(null);
+                }}
+                analysisData={analysisData}
+                isDrawing={isDrawing}
+                setIsDrawing={setIsDrawing}
+                overlayOpacity={overlayOpacity}
+                showSinkMarkers={showSinkMarkers}
+                selectedLocation={selectedLocation}
+              />
+            </>
+          ) : (
+            /* 3D Three.js Interactive Terrain Mesh Viewer */
+            <TerrainViewer3D analysisData={analysisData} />
+          )}
         </div>
       </div>
 
@@ -185,4 +224,3 @@ export default function Home() {
     </div>
   );
 }
-
