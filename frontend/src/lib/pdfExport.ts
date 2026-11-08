@@ -207,3 +207,4 @@ export function generateAgronomicPDFReport(data: TerrainAnalysisResponse) {
 
   doc.save('Agricultural_Drainage_Report_Phase2.pdf');
 }
+

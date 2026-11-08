@@ -87,3 +87,4 @@ class HydrologicalRiskService:
             "crop_loss_risk_percent": crop_loss_risk,
             "risk_level": risk_level,
         }
+

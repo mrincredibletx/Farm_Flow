@@ -118,3 +118,4 @@ Provide a practical, clear agronomic advisory for the farmer:
                 f"saving an estimated ₹1,40,000 - ₹2,20,000 in potential yield loss per monsoon cycle."
             )
         }
+
