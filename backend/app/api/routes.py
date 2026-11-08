@@ -2,9 +2,19 @@ import logging
 from typing import List, Dict, Any
 import numpy as np
 from fastapi import APIRouter, HTTPException, status
-from app.models.terrain import TerrainRequest, TerrainResponse
+from pydantic import BaseModel, Field
+from app.models.terrain import (
+    TerrainRequest,
+    TerrainResponse,
+    DrainageRoute,
+    RiskSimulationResult,
+    AIAdvisoryResult,
+)
 from app.services.elevation_service import ElevationService
 from app.services.hydrology_service import HydrologyService
+from app.services.routing_service import DrainageRoutingService
+from app.services.risk_ml_service import HydrologicalRiskService
+from app.services.advisory_service import AIAdvisoryService
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +22,30 @@ router = APIRouter()
 
 elevation_service = ElevationService()
 hydrology_service = HydrologyService()
+routing_service = DrainageRoutingService()
+risk_service = HydrologicalRiskService()
+advisory_service = AIAdvisoryService()
+
+class RiskScenarioPayload(BaseModel):
+    soil_type: str = Field(default="clay")
+    rainfall_mm: float = Field(default=65.0, ge=5.0, le=300.0)
+    area_sqm: float = Field(default=117600.0)
+    high_risk_points_count: int = Field(default=12)
+    relief_meters: float = Field(default=3.5)
+
+class AdvisoryPayload(BaseModel):
+    metrics: Dict[str, Any]
+    soil_type: str = "clay"
+    crop_type: str = "Wheat"
+    routes: List[Dict[str, Any]] = []
 
 @router.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
     return {
         "status": "healthy",
         "service": "Smart Agricultural Drainage System API",
-        "version": "1.0.0",
-        "phase": "Phase I MVP (7th Semester)"
+        "version": "2.0.0",
+        "phase": "Phase II (Full System MVP with 3D, A* Routing, ML Risk & Gemini AI)"
     }
 
 @router.get("/sample-fields")
@@ -82,7 +108,7 @@ async def get_sample_fields():
     "/analyze-terrain",
     response_model=TerrainResponse,
     status_code=status.HTTP_200_OK,
-    summary="Analyze field terrain elevation and compute waterlogging zones"
+    summary="Analyze field terrain elevation, compute waterlogging zones, A* drainage routes, ML risk, and AI advisory"
 )
 async def analyze_terrain(payload: TerrainRequest):
     try:
@@ -121,6 +147,39 @@ async def analyze_terrain(payload: TerrainRequest):
         # Prepare 2D elevation grid list for response
         elevation_grid_list = [[round(float(val), 2) for val in row] for row in elevation_grid]
 
+        # Phase II Enhancements
+        drainage_routes = None
+        risk_simulation = None
+        ai_advisory = None
+
+        if payload.include_phase2:
+            # 1. A* Drainage Pathfinding
+            drainage_routes = routing_service.calculate_drainage_routes(
+                grid_lats=grid_lats,
+                grid_lngs=grid_lngs,
+                elevation_grid=elevation_grid,
+                mask=mask,
+                waterlogging_zones=waterlogging_zones,
+                bbox=bbox
+            )
+
+            # 2. Soil & Precipitation ML Risk Simulation
+            risk_simulation = risk_service.simulate_scenario(
+                soil_type=payload.soil_type or "clay",
+                rainfall_mm=payload.rainfall_mm or 65.0,
+                area_sqm=metrics.total_area_sqm,
+                high_risk_points_count=metrics.high_risk_points_count,
+                relief_meters=metrics.elevation_range
+            )
+
+            # 3. LLM AI Advisory
+            ai_advisory = await advisory_service.generate_advisory(
+                metrics=metrics.dict(),
+                soil_type=payload.soil_type or "clay",
+                crop_type=payload.crop_type or "Wheat",
+                routes=drainage_routes
+            )
+
         return TerrainResponse(
             status="success",
             bounding_box=bbox,
@@ -129,7 +188,10 @@ async def analyze_terrain(payload: TerrainRequest):
             grid_coordinates=grid_coords,
             zone_details=zone_details,
             metrics=metrics,
-            summary=summary
+            summary=summary,
+            drainage_routes=drainage_routes,
+            risk_simulation=risk_simulation,
+            ai_advisory=ai_advisory
         )
 
     except ValueError as ve:
@@ -139,3 +201,27 @@ async def analyze_terrain(payload: TerrainRequest):
         logger.exception(f"Unexpected error in analyze-terrain: {e}")
         raise HTTPException(status_code=500, detail=f"Terrain analysis failed: {str(e)}")
 
+@router.post("/simulate-risk", response_model=RiskSimulationResult)
+async def simulate_risk(payload: RiskScenarioPayload):
+    """
+    Simulates waterlogging risk and saturation kinetics when user adjusts soil type or rainfall slider.
+    """
+    return risk_service.simulate_scenario(
+        soil_type=payload.soil_type,
+        rainfall_mm=payload.rainfall_mm,
+        area_sqm=payload.area_sqm,
+        high_risk_points_count=payload.high_risk_points_count,
+        relief_meters=payload.relief_meters
+    )
+
+@router.post("/generate-advisory", response_model=AIAdvisoryResult)
+async def generate_advisory(payload: AdvisoryPayload):
+    """
+    Generates agronomic recommendations tailored to crop, soil, and drainage metrics.
+    """
+    return await advisory_service.generate_advisory(
+        metrics=payload.metrics,
+        soil_type=payload.soil_type,
+        crop_type=payload.crop_type,
+        routes=payload.routes
+    )

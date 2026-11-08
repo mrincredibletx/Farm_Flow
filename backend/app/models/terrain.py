@@ -12,6 +12,22 @@ class TerrainRequest(BaseModel):
         le=50,
         description="Grid resolution (N x N) for elevation sampling within the bounding box."
     )
+    soil_type: Optional[str] = Field(
+        default="clay",
+        description="Soil category (clay, black_cotton, silt_loam, alluvial, sandy_loam)"
+    )
+    crop_type: Optional[str] = Field(
+        default="Wheat",
+        description="Crop variety planted in field"
+    )
+    rainfall_mm: Optional[float] = Field(
+        default=65.0,
+        description="Precipitation scenario event depth in mm"
+    )
+    include_phase2: Optional[bool] = Field(
+        default=True,
+        description="Whether to run Phase II algorithms (A* routing, ML risk scoring, LLM advisory)"
+    )
 
     @field_validator("coordinates")
     @classmethod
@@ -55,6 +71,43 @@ class ZoneDetail(BaseModel):
     depression_depth: float
     slope_percent: float
 
+class DrainageRoute(BaseModel):
+    route_id: str
+    sink_point: List[float]  # [lng, lat]
+    outlet_point: List[float]  # [lng, lat]
+    path_coordinates: List[List[float]]  # [[lng, lat], ...]
+    path_elevations: List[float]
+    length_meters: float
+    elevation_drop_meters: float
+    slope_percent: float
+    excavation_volume_m3: float
+    estimated_cost_inr: float
+    recommended_ditch_type: str
+    severity: float
+
+class RiskSimulationResult(BaseModel):
+    soil_type: str
+    soil_name: str
+    k_sat_mm_per_hr: float
+    curve_number: int
+    rainfall_event_mm: float
+    runoff_depth_mm: float
+    runoff_volume_m3: float
+    runoff_volume_megaliters: float
+    estimated_ponding_depth_cm: float
+    drainage_time_hours: float
+    crop_loss_risk_percent: float
+    risk_level: str
+
+class AIAdvisoryResult(BaseModel):
+    headline: str
+    generated_by: str
+    drainage_recommendations: List[str]
+    crop_vulnerability_advice: List[str]
+    soil_management_tips: List[str]
+    estimated_roi_assessment: str
+    full_text: Optional[str] = None
+
 class TerrainResponse(BaseModel):
     status: str = "success"
     bounding_box: Dict[str, float]
@@ -64,4 +117,7 @@ class TerrainResponse(BaseModel):
     zone_details: Optional[List[ZoneDetail]] = None
     metrics: Optional[TerrainMetrics] = None
     summary: Optional[str] = None
-
+    # Phase II Extensions
+    drainage_routes: Optional[List[DrainageRoute]] = None
+    risk_simulation: Optional[RiskSimulationResult] = None
+    ai_advisory: Optional[AIAdvisoryResult] = None

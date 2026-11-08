@@ -33,12 +33,14 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     vertexMarkers: any[];
     heatmapLayer: any;
     sinkMarkersLayer: any;
+    drainageRoutesLayer: any;
   }>({
     tileLayer: null,
     polygonLayer: null,
     vertexMarkers: [],
     heatmapLayer: null,
     sinkMarkersLayer: null,
+    drainageRoutesLayer: null,
   });
 
   const [activeBaseMap, setActiveBaseMap] = useState<'dark' | 'satellite' | 'osm'>('dark');
@@ -82,6 +84,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     layersRef.current.tileLayer = darkTiles;
     layersRef.current.heatmapLayer = L.layerGroup().addTo(map);
     layersRef.current.sinkMarkersLayer = L.layerGroup().addTo(map);
+    layersRef.current.drainageRoutesLayer = L.layerGroup().addTo(map);
 
     mapInstanceRef.current = map;
 
@@ -349,9 +352,81 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             </div>
           </div>
         `);
-        sinksGroup.addLayer(sinkMarker);
-      }
-    });
+    const routesGroup = layersRef.current.drainageRoutesLayer;
+    routesGroup.clearLayers();
+
+    // Render Engineered Drainage Ditch Routes (A* Pathfinding)
+    if (analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
+      analysisData.drainage_routes.forEach((route, idx) => {
+        const latLngs = route.path_coordinates.map((pt) => [pt[1], pt[0]]);
+
+        // Ditch Polyline with glowing neon styling
+        const ditchLine = L.polyline(latLngs, {
+          color: '#00F0FF',
+          weight: 4,
+          opacity: 0.95,
+          dashArray: '8, 8',
+          lineCap: 'round',
+          lineJoin: 'round',
+        });
+
+        ditchLine.bindPopup(`
+          <div class="p-2 space-y-2 text-xs">
+            <div class="font-bold text-cyan-400 flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+              <span>ENGINEERED DRAINAGE ROUTE #${idx + 1}</span>
+            </div>
+            <div class="p-2 rounded bg-slate-900/80 border border-cyan-500/20 text-[11px] space-y-1">
+              <div class="flex justify-between">
+                <span class="text-slate-400">Total Length:</span>
+                <span class="font-mono font-bold text-white">${route.length_meters.toFixed(1)} m</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Elevation Drop (ΔZ):</span>
+                <span class="font-mono text-cyan-300 font-bold">${route.elevation_drop_meters.toFixed(2)} m</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Slope Gradient:</span>
+                <span class="font-mono text-slate-200">${route.slope_percent.toFixed(2)}%</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Earthwork Cut:</span>
+                <span class="font-mono text-amber-300">${route.excavation_volume_m3.toFixed(1)} m³</span>
+              </div>
+              <div class="flex justify-between border-t border-white/10 pt-1">
+                <span class="text-slate-400">Est. Excavation Cost:</span>
+                <span class="font-mono text-emerald-400 font-bold">₹${route.estimated_cost_inr.toLocaleString()}</span>
+              </div>
+            </div>
+            <p class="text-[10px] text-cyan-300/80 italic font-mono">
+              Design: ${route.recommended_ditch_type}
+            </p>
+          </div>
+        `);
+
+        routesGroup.addLayer(ditchLine);
+
+        // Discharge Outlet marker at the end of the ditch
+        const outletCoord = route.outlet_point;
+        const outletIcon = L.divIcon({
+          className: 'ditch-outlet-pin',
+          html: `
+            <div style="background: #10B981; width: 14px; height: 14px; border: 2px solid #FFFFFF; border-radius: 3px; box-shadow: 0 0 10px #10B981;" title="Discharge Outlet"></div>
+          `,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
+        });
+
+        const outletMarker = L.marker([outletCoord[1], outletCoord[0]], { icon: outletIcon });
+        outletMarker.bindPopup(`
+          <div class="p-1.5 text-xs space-y-1">
+            <div class="font-bold text-emerald-400">DISCHARGE OUTLET #${idx + 1}</div>
+            <div class="text-[11px] text-slate-300">Natural field boundary drainage escape point.</div>
+          </div>
+        `);
+        routesGroup.addLayer(outletMarker);
+      });
+    }
   }, [L, analysisData, overlayOpacity, showSinkMarkers]);
 
   return (

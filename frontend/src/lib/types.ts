@@ -30,6 +30,46 @@ export interface ZoneDetail {
   slope_percent: number;
 }
 
+export interface DrainageRoute {
+  route_id: string;
+  sink_point: [number, number];
+  outlet_point: [number, number];
+  path_coordinates: [number, number][];
+  path_elevations: number[];
+  length_meters: number;
+  elevation_drop_meters: number;
+  slope_percent: number;
+  excavation_volume_m3: number;
+  estimated_cost_inr: number;
+  recommended_ditch_type: string;
+  severity: number;
+}
+
+export interface RiskSimulationResult {
+  soil_type: string;
+  soil_name: string;
+  k_sat_mm_per_hr: number;
+  curve_number: number;
+  rainfall_event_mm: number;
+  runoff_depth_mm: number;
+  runoff_volume_m3: number;
+  runoff_volume_megaliters: number;
+  estimated_ponding_depth_cm: number;
+  drainage_time_hours: number;
+  crop_loss_risk_percent: number;
+  risk_level: string;
+}
+
+export interface AIAdvisoryResult {
+  headline: string;
+  generated_by: string;
+  drainage_recommendations: string[];
+  crop_vulnerability_advice: string[];
+  soil_management_tips: string[];
+  estimated_roi_assessment: string;
+  full_text?: string;
+}
+
 export interface TerrainAnalysisResponse {
   status: string;
   bounding_box: BoundingBox;
@@ -39,6 +79,10 @@ export interface TerrainAnalysisResponse {
   zone_details?: ZoneDetail[];
   metrics?: TerrainMetrics;
   summary?: string;
+  // Phase II fields
+  drainage_routes?: DrainageRoute[];
+  risk_simulation?: RiskSimulationResult;
+  ai_advisory?: AIAdvisoryResult;
 }
 
 export interface SampleField {
