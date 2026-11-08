@@ -278,17 +278,15 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         severity >= 0.7
           ? 'Severe Waterlogging Risk'
           : severity >= 0.4
-          ? 'Moderate Waterlogging Risk'
-          : 'Low / Normal Runoff';
+            ? 'Moderate Waterlogging Risk'
+            : 'Low / Normal Runoff';
 
       circle.bindPopup(`
         <div class="p-1 space-y-1.5 text-xs">
-          <div class="font-bold flex items-center gap-1.5 ${
-            severity >= 0.7 ? 'text-rose-400' : severity >= 0.4 ? 'text-amber-400' : 'text-cyan-400'
-          }">
-            <span class="w-2 h-2 rounded-full inline-block ${
-              severity >= 0.7 ? 'bg-rose-500' : severity >= 0.4 ? 'bg-amber-500' : 'bg-cyan-500'
-            }"></span>
+          <div class="font-bold flex items-center gap-1.5 ${severity >= 0.7 ? 'text-rose-400' : severity >= 0.4 ? 'text-amber-400' : 'text-cyan-400'
+        }">
+            <span class="w-2 h-2 rounded-full inline-block ${severity >= 0.7 ? 'bg-rose-500' : severity >= 0.4 ? 'bg-amber-500' : 'bg-cyan-500'
+        }"></span>
             <span>${riskLabel}</span>
           </div>
           <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
@@ -365,31 +363,28 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 p-1 glass-panel rounded-xl shadow-xl">
         <button
           onClick={() => setActiveBaseMap('dark')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            activeBaseMap === 'dark'
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'dark'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-neon-cyan'
               : 'text-slate-400 hover:text-slate-200'
-          }`}
+            }`}
         >
           Dark
         </button>
         <button
           onClick={() => setActiveBaseMap('satellite')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            activeBaseMap === 'satellite'
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'satellite'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-neon-cyan'
               : 'text-slate-400 hover:text-slate-200'
-          }`}
+            }`}
         >
           Satellite
         </button>
         <button
           onClick={() => setActiveBaseMap('osm')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            activeBaseMap === 'osm'
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'osm'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-neon-cyan'
               : 'text-slate-400 hover:text-slate-200'
-          }`}
+            }`}
         >
           Street
         </button>
