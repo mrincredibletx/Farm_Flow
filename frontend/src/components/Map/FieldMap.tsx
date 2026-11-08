@@ -352,11 +352,16 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             </div>
           </div>
         `);
-    const routesGroup = layersRef.current.drainageRoutesLayer;
-    routesGroup.clearLayers();
+        sinksGroup.addLayer(sinkMarker);
+      }
+    });
 
-    // Render Engineered Drainage Ditch Routes (A* Pathfinding)
-    if (analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
+    const routesGroup = layersRef.current.drainageRoutesLayer;
+    if (routesGroup) {
+      routesGroup.clearLayers();
+
+      // Render Engineered Drainage Ditch Routes (A* Pathfinding)
+      if (analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
       analysisData.drainage_routes.forEach((route, idx) => {
         const latLngs = route.path_coordinates.map((pt) => [pt[1], pt[0]]);
 
@@ -427,6 +432,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         routesGroup.addLayer(outletMarker);
       });
     }
+  }
   }, [L, analysisData, overlayOpacity, showSinkMarkers]);
 
   return (
