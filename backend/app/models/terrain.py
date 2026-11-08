@@ -46,12 +46,22 @@ class TerrainMetrics(BaseModel):
     dominant_slope_direction: str
     average_slope_percent: float
 
+class ZoneDetail(BaseModel):
+    lng: float
+    lat: float
+    severity: float
+    elevation: float
+    is_local_min: bool
+    depression_depth: float
+    slope_percent: float
+
 class TerrainResponse(BaseModel):
     status: str = "success"
     bounding_box: Dict[str, float]
     elevation_grid: List[List[float]]
     waterlogging_zones: List[List[float]]  # [[lng, lat, severity], ...]
     grid_coordinates: Optional[List[List[List[float]]]] = None  # [[lng, lat] per cell]
+    zone_details: Optional[List[ZoneDetail]] = None
     metrics: Optional[TerrainMetrics] = None
     summary: Optional[str] = None
 

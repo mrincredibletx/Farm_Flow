@@ -89,6 +89,7 @@ class HydrologyService:
 
         # Local Minimum and Waterlogging Severity Calculation
         waterlogging_zones: List[List[float]] = []
+        zone_details: List[Dict[str, Any]] = []
         high_risk_count = 0
         moderate_risk_count = 0
         low_risk_count = 0
@@ -149,11 +150,22 @@ class HydrologyService:
                 else:
                     low_risk_count += 1
 
+                # Standard contract format: [lng, lat, severity]
                 waterlogging_zones.append([
                     round(curr_lng, 6),
                     round(curr_lat, 6),
                     severity
                 ])
+
+                zone_details.append({
+                    "lng": round(curr_lng, 6),
+                    "lat": round(curr_lat, 6),
+                    "severity": severity,
+                    "elevation": round(curr_z, 2),
+                    "is_local_min": is_local_min,
+                    "depression_depth": round(depression_depth, 2),
+                    "slope_percent": round(curr_slope, 2),
+                })
 
         # Area computations
         area_sqm = self.calculate_polygon_area_sqm(coordinates)
@@ -191,5 +203,5 @@ class HydrologyService:
                 f"Total relief is {round(elev_range, 2)}m with {moderate_risk_count} moderate accumulation zones."
             )
 
-        return waterlogging_zones, metrics, summary
+        return waterlogging_zones, zone_details, metrics, summary
 

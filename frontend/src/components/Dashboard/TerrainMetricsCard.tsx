@@ -121,6 +121,29 @@ export const TerrainMetricsCard: React.FC<TerrainMetricsCardProps> = ({ metrics 
             <div className="text-[9px] text-emerald-400/80">Good Runoff</div>
           </div>
         </div>
+
+        {/* Topographic Risk Distribution Bar */}
+        {(() => {
+          const totalPts = metrics.high_risk_points_count + metrics.moderate_risk_points_count + metrics.low_risk_points_count;
+          if (totalPts === 0) return null;
+          const highPct = (metrics.high_risk_points_count / totalPts) * 100;
+          const modPct = (metrics.moderate_risk_points_count / totalPts) * 100;
+          const lowPct = (metrics.low_risk_points_count / totalPts) * 100;
+
+          return (
+            <div className="pt-2 space-y-1.5">
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>Field Vulnerability Breakdown:</span>
+                <span className="text-rose-300 font-mono font-medium">{Math.round(highPct)}% Severe Ponding</span>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden flex bg-slate-800">
+                <div style={{ width: `${highPct}%` }} className="bg-rose-500 transition-all duration-500" title={`Critical: ${Math.round(highPct)}%`} />
+                <div style={{ width: `${modPct}%` }} className="bg-amber-500 transition-all duration-500" title={`Moderate: ${Math.round(modPct)}%`} />
+                <div style={{ width: `${lowPct}%` }} className="bg-emerald-500 transition-all duration-500" title={`Normal: ${Math.round(lowPct)}%`} />
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

@@ -101,7 +101,7 @@ async def analyze_terrain(payload: TerrainRequest):
         elevation_grid = np.array(flat_elevations, dtype=float).reshape(resolution, resolution)
 
         # Step 4: Execute NumPy Pooling & Hydrology Analysis
-        waterlogging_zones, metrics, summary = hydrology_service.analyze_terrain(
+        waterlogging_zones, zone_details, metrics, summary = hydrology_service.analyze_terrain(
             grid_lats=grid_lats,
             grid_lngs=grid_lngs,
             elevation_grid=elevation_grid,
@@ -127,6 +127,7 @@ async def analyze_terrain(payload: TerrainRequest):
             elevation_grid=elevation_grid_list,
             waterlogging_zones=waterlogging_zones,
             grid_coordinates=grid_coords,
+            zone_details=zone_details,
             metrics=metrics,
             summary=summary
         )

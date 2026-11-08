@@ -47,6 +47,8 @@ export default function Home() {
         const uem = fields.find((f) => f.id === 'uem-jaipur-demo') || fields[0];
         setCoordinates(uem.coordinates);
         setSelectedLocation({ lat: uem.center[1], lng: uem.center[0] });
+        // Automatically analyze initial field for instant evaluation presentation
+        handleAnalyze(uem.coordinates);
       }
     });
   }, []);

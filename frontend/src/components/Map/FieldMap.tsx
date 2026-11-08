@@ -231,12 +231,24 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     if (!analysisData || !analysisData.waterlogging_zones) return;
 
     const zones = analysisData.waterlogging_zones; // [[lng, lat, severity], ...]
+    const detailsMap = new Map<string, any>();
+    if (analysisData.zone_details) {
+      analysisData.zone_details.forEach((d) => {
+        detailsMap.set(`${d.lng.toFixed(5)}_${d.lat.toFixed(5)}`, d);
+      });
+    }
 
     // Compute bounding radius based on field resolution
     const sampleCount = zones.length;
     const pointRadius = sampleCount > 300 ? 10 : sampleCount > 150 ? 15 : 22;
 
     zones.forEach(([lng, lat, severity]) => {
+      const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
+      const elevText = detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...';
+      const isSink = detail ? detail.is_local_min : severity >= 0.75;
+      const depressionDepth = detail?.depression_depth || 0;
+      const slopePercent = detail?.slope_percent;
+
       // Determine color based on waterlogging severity
       let fillColor = '#10B981'; // Low risk
       let strokeColor = '#059669';
@@ -280,8 +292,12 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             <span>${riskLabel}</span>
           </div>
           <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
-            <div>Severity Score:</div>
+            <div>Ground Elevation:</div>
+            <div class="font-mono font-semibold text-right text-cyan-300">${elevText}</div>
+            <div>Risk Severity:</div>
             <div class="font-mono font-semibold text-right">${Math.round(severity * 100)}%</div>
+            ${depressionDepth > 0 ? `<div>Depression Depth:</div><div class="font-mono text-rose-300 text-right">-${depressionDepth.toFixed(2)}m</div>` : ''}
+            ${slopePercent !== undefined ? `<div>Surface Slope:</div><div class="font-mono text-slate-300 text-right">${slopePercent.toFixed(1)}%</div>` : ''}
             <div>Coordinates:</div>
             <div class="font-mono text-[10px] text-right">${lng.toFixed(5)}, ${lat.toFixed(5)}</div>
           </div>
@@ -291,7 +307,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       heatmapGroup.addLayer(circle);
 
       // Radar ping marker for critical local minimums (severe sinks)
-      if (showSinkMarkers && severity >= 0.75) {
+      if (showSinkMarkers && (isSink || severity >= 0.75)) {
         const pingIcon = L.divIcon({
           className: 'sink-radar-pin',
           html: `
@@ -312,16 +328,25 @@ export const FieldMap: React.FC<FieldMapProps> = ({
               <span>CRITICAL TERRAIN SINK (LOCAL MINIMUM)</span>
             </div>
             <p class="text-[11px] text-slate-300">
-              Significant natural basin point where surface runoff collects, causing severe prolonged crop waterlogging.
+              Significant natural basin point where surface runoff accumulates, causing prolonged waterlogging.
             </p>
             <div class="bg-slate-900/80 p-2 rounded border border-rose-500/20 text-[11px] space-y-1">
+              <div class="flex justify-between">
+                <span class="text-slate-400">Ground Elevation:</span>
+                <span class="text-cyan-300 font-bold font-mono">${elevText}</span>
+              </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">Ponding Probability:</span>
                 <span class="text-rose-300 font-bold font-mono">${Math.round(severity * 100)}%</span>
               </div>
+              ${depressionDepth > 0 ? `
+              <div class="flex justify-between">
+                <span class="text-slate-400">Depression Depth:</span>
+                <span class="text-amber-300 font-bold font-mono">-${depressionDepth.toFixed(2)}m</span>
+              </div>` : ''}
               <div class="flex justify-between">
                 <span class="text-slate-400">Position:</span>
-                <span class="font-mono text-cyan-300">${lng.toFixed(5)}, ${lat.toFixed(5)}</span>
+                <span class="font-mono text-slate-300">${lng.toFixed(5)}, ${lat.toFixed(5)}</span>
               </div>
             </div>
           </div>

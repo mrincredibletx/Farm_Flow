@@ -20,12 +20,23 @@ export interface TerrainMetrics {
   average_slope_percent: number;
 }
 
+export interface ZoneDetail {
+  lng: number;
+  lat: number;
+  severity: number;
+  elevation: number;
+  is_local_min: boolean;
+  depression_depth: number;
+  slope_percent: number;
+}
+
 export interface TerrainAnalysisResponse {
   status: string;
   bounding_box: BoundingBox;
   elevation_grid: number[][];
   waterlogging_zones: [number, number, number][]; // [lng, lat, severity]
   grid_coordinates?: [number, number][][];
+  zone_details?: ZoneDetail[];
   metrics?: TerrainMetrics;
   summary?: string;
 }
