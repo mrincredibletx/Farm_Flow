@@ -15,6 +15,7 @@ from app.services.hydrology_service import HydrologyService
 from app.services.routing_service import DrainageRoutingService
 from app.services.risk_ml_service import HydrologicalRiskService
 from app.services.advisory_service import AIAdvisoryService
+from app.services.weather_service import WeatherService
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ hydrology_service = HydrologyService()
 routing_service = DrainageRoutingService()
 risk_service = HydrologicalRiskService()
 advisory_service = AIAdvisoryService()
+weather_service = WeatherService()
 
 class RiskScenarioPayload(BaseModel):
     soil_type: str = Field(default="clay")
@@ -147,6 +149,11 @@ async def analyze_terrain(payload: TerrainRequest):
         # Prepare 2D elevation grid list for response
         elevation_grid_list = [[round(float(val), 2) for val in row] for row in elevation_grid]
 
+        # Fetch live meteorological data for field center
+        center_lat = (bbox["min_lat"] + bbox["max_lat"]) / 2
+        center_lng = (bbox["min_lng"] + bbox["max_lng"]) / 2
+        live_weather = await weather_service.fetch_current_rainfall(center_lat, center_lng)
+
         # Phase II Enhancements
         drainage_routes = None
         risk_simulation = None
@@ -163,16 +170,18 @@ async def analyze_terrain(payload: TerrainRequest):
                 bbox=bbox
             )
 
-            # 2. Soil & Precipitation ML Risk Simulation
+            # 2. Soil & Precipitation ML Risk Simulation (using live weather rainfall or custom scenario)
+            effective_rain = payload.rainfall_mm if payload.rainfall_mm and payload.rainfall_mm != 65.0 else live_weather.get("rainfall_event_mm", 65.0)
+
             risk_simulation = risk_service.simulate_scenario(
                 soil_type=payload.soil_type or "clay",
-                rainfall_mm=payload.rainfall_mm or 65.0,
+                rainfall_mm=effective_rain,
                 area_sqm=metrics.total_area_sqm,
                 high_risk_points_count=metrics.high_risk_points_count,
                 relief_meters=metrics.elevation_range
             )
 
-            # 3. LLM AI Advisory
+            # 3. LLM AI Advisory (Gemini API with ICAR expert model)
             ai_advisory = await advisory_service.generate_advisory(
                 metrics=metrics.dict(),
                 soil_type=payload.soil_type or "clay",
@@ -192,7 +201,8 @@ async def analyze_terrain(payload: TerrainRequest):
             summary=summary,
             drainage_routes=drainage_routes,
             risk_simulation=risk_simulation,
-            ai_advisory=ai_advisory
+            ai_advisory=ai_advisory,
+            live_weather=live_weather
         )
 
     except ValueError as ve:
@@ -226,3 +236,10 @@ async def generate_advisory(payload: AdvisoryPayload):
         crop_type=payload.crop_type,
         routes=payload.routes
     )
+
+@router.get("/weather", status_code=status.HTTP_200_OK, summary="Fetch live weather and precipitation data")
+async def get_weather(lat: float, lng: float):
+    """
+    Returns real-time rainfall, temperature, and wind speed from OpenWeatherMap or Tomorrow.io.
+    """
+    return await weather_service.fetch_current_rainfall(lat, lng)

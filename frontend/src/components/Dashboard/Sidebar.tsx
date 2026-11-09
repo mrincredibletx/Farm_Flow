@@ -316,6 +316,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB 3: SOIL & RAINFALL ML SIMULATOR (Phase II) */}
         {activeTab === 'simulator' && (
           <div className="space-y-3 animate-fade-in text-xs">
+            {/* Live Meteorological Feed Badge */}
+            {analysisData?.live_weather && (
+              <div className="p-3 rounded-xl bg-blue-950/25 border border-blue-500/30 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-blue-300 flex items-center gap-1.5">
+                    <CloudRain className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Live Meteorological Feed</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-mono font-medium">
+                    {analysisData.live_weather.is_live ? "Live Station" : "Simulation"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                  <div className="p-1.5 rounded bg-slate-950/50 border border-white/5">
+                    <div className="text-slate-400 text-[10px]">Condition:</div>
+                    <div className="font-semibold text-white">{analysisData.live_weather.condition}</div>
+                  </div>
+                  <div className="p-1.5 rounded bg-slate-950/50 border border-white/5">
+                    <div className="text-slate-400 text-[10px]">Temperature:</div>
+                    <div className="font-mono font-semibold text-cyan-300">{analysisData.live_weather.temperature_c}°C</div>
+                  </div>
+                  <div className="p-1.5 rounded bg-slate-950/50 border border-white/5">
+                    <div className="text-slate-400 text-[10px]">Humidity:</div>
+                    <div className="font-mono text-slate-200">{analysisData.live_weather.humidity_percent}%</div>
+                  </div>
+                  <div className="p-1.5 rounded bg-slate-950/50 border border-white/5">
+                    <div className="text-slate-400 text-[10px]">Recorded Rain (1h):</div>
+                    <div className="font-mono font-bold text-blue-300">{analysisData.live_weather.recorded_rain_1h_mm || 0} mm</div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-400 pt-1 border-t border-white/5 flex justify-between items-center">
+                  <span>Location: {analysisData.live_weather.location_name || "Field Coordinates"}</span>
+                  <span className="text-blue-400 font-mono text-[9px]">{analysisData.live_weather.source}</span>
+                </div>
+              </div>
+            )}
+
             {/* Input Controls */}
             <div className="p-3 rounded-xl bg-slate-900/70 border border-white/10 space-y-3">
               <span className="font-semibold text-slate-200 flex items-center gap-1.5">

@@ -135,3 +135,4 @@ class TerrainResponse(BaseModel):
     drainage_routes: Optional[List[DrainageRoute]] = None
     risk_simulation: Optional[RiskSimulationResult] = None
     ai_advisory: Optional[AIAdvisoryResult] = None
+    live_weather: Optional[Dict[str, Any]] = None

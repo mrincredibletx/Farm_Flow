@@ -93,6 +93,17 @@ export interface TerrainAnalysisResponse {
   zone_details?: ZoneDetail[];
   flow_vectors?: FlowVector[];
   metrics?: TerrainMetrics;
+  live_weather?: {
+    source: string;
+    rainfall_event_mm: number;
+    recorded_rain_1h_mm?: number;
+    condition: string;
+    temperature_c: number;
+    humidity_percent: number;
+    wind_speed_mps: number;
+    location_name?: string;
+    is_live: boolean;
+  };
   summary?: string;
   // Phase II fields
   drainage_routes?: DrainageRoute[];
