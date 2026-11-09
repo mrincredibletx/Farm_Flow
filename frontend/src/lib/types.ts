@@ -17,6 +17,7 @@ export interface TerrainMetrics {
   moderate_risk_points_count: number;
   low_risk_points_count: number;
   dominant_slope_direction: string;
+  dominant_aspect_degrees?: number;
   average_slope_percent: number;
 }
 

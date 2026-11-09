@@ -120,11 +120,17 @@ class HydrologyService:
                 if neighbor_vals:
                     min_neighbor = min(neighbor_vals)
                     avg_neighbor = sum(neighbor_vals) / len(neighbor_vals)
-                    if curr_z <= min_neighbor:
+                    # A true local depression is strictly lower than neighbors
+                    if curr_z < min_neighbor - 0.01:
                         is_local_min = True
-                        depression_depth = max(0.0, avg_neighbor - curr_z)
-                    elif curr_z < avg_neighbor:
-                        depression_depth = max(0.0, avg_neighbor - curr_z)
+                        depression_depth = max(0.01, avg_neighbor - curr_z)
+                    elif curr_z < avg_neighbor - 0.04:
+                        is_local_min = True
+                        depression_depth = max(0.01, avg_neighbor - curr_z)
+                    elif curr_z <= min_neighbor and elevation_deficit > 0.85 and curr_slope < 1.2:
+                        # Deepest low-lying flat basin floor where ponding settles
+                        is_local_min = True
+                        depression_depth = max(0.02, avg_neighbor - curr_z)
 
                 # Normalized elevation component (0 at max elevation, 1 at min elevation)
                 elevation_deficit = (max_elev - curr_z) / elev_range  # [0, 1]
@@ -134,11 +140,11 @@ class HydrologyService:
 
                 # Compute weighted severity score in [0.0, 1.0]
                 if is_local_min:
-                    # True sinkhole/depression in terrain
-                    severity = 0.65 + 0.25 * elevation_deficit + 0.10 * min(depression_depth / 0.5, 1.0)
+                    # True sink basin point
+                    severity = 0.60 + 0.25 * elevation_deficit + 0.15 * min(depression_depth / 0.35, 1.0)
                 else:
                     # General terrain pooling probability
-                    severity = (0.55 * elevation_deficit) + (0.25 * flatness_factor) + (0.20 * min(depression_depth / 0.4, 1.0))
+                    severity = (0.50 * elevation_deficit) + (0.25 * flatness_factor) + (0.25 * min(depression_depth / 0.35, 1.0))
 
                 severity = round(float(np.clip(severity, 0.0, 1.0)), 3)
 
@@ -187,6 +193,7 @@ class HydrologyService:
             moderate_risk_points_count=moderate_risk_count,
             low_risk_points_count=low_risk_count,
             dominant_slope_direction=dominant_direction,
+            dominant_aspect_degrees=round(aspect_deg, 1),
             average_slope_percent=round(avg_slope, 2)
         )
 

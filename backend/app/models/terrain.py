@@ -60,6 +60,7 @@ class TerrainMetrics(BaseModel):
     moderate_risk_points_count: int
     low_risk_points_count: int
     dominant_slope_direction: str
+    dominant_aspect_degrees: Optional[float] = None
     average_slope_percent: float
 
 class ZoneDetail(BaseModel):

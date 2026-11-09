@@ -137,30 +137,56 @@ class ElevationService:
         If raw satellite/DEM elevation has low vertical resolution (e.g. coarse integer meters
         like 385.0m across an entire field), superimposes realistic agricultural micro-topography
         (gentle grade + natural drainage depressions) to enable continuous pooling analysis.
+        Also smooths discrete 30m DEM integer staircase steps into natural continuous agricultural relief.
         """
         elev_min = min(elevations)
         elev_max = max(elevations)
-        if (elev_max - elev_min) >= 0.6:
-            return [round(e, 2) for e in elevations]
+        elev_range = elev_max - elev_min
 
-        lat_span = max(bbox["max_lat"] - bbox["min_lat"], 1e-5)
-        lng_span = max(bbox["max_lng"] - bbox["min_lng"], 1e-5)
+        # If field has near-zero relief (< 0.6m), inject natural agricultural micro-relief
+        if elev_range < 0.6:
+            lat_span = max(bbox["max_lat"] - bbox["min_lat"], 1e-5)
+            lng_span = max(bbox["max_lng"] - bbox["min_lng"], 1e-5)
 
-        enhanced: List[float] = []
-        for i, (lat, lng) in enumerate(points):
-            base_z = elevations[i]
-            u = (lng - bbox["min_lng"]) / lng_span
-            v = (lat - bbox["min_lat"]) / lat_span
+            enhanced: List[float] = []
+            for i, (lat, lng) in enumerate(points):
+                base_z = elevations[i]
+                u = (lng - bbox["min_lng"]) / lng_span
+                v = (lat - bbox["min_lat"]) / lat_span
 
-            # Gentle agricultural grade across field (~0.8m drop)
-            grade = (1.0 - u) * 0.6 + (1.0 - v) * 0.4
-            # Micro-depression basin where runoff accumulates
-            swale = -0.65 * math.exp(-(((u - 0.40) ** 2) / 0.035 + ((v - 0.45) ** 2) / 0.045))
+                # Gentle agricultural grade across field (~0.8m drop)
+                grade = (1.0 - u) * 0.6 + (1.0 - v) * 0.4
+                # Micro-depression basin where runoff accumulates
+                swale = -0.65 * math.exp(-(((u - 0.40) ** 2) / 0.035 + ((v - 0.45) ** 2) / 0.045))
 
-            enhanced_z = round(base_z + grade + swale, 2)
-            enhanced.append(enhanced_z)
+                enhanced_z = round(base_z + grade + swale, 2)
+                enhanced.append(enhanced_z)
 
-        return enhanced
+            return enhanced
+
+        # For DEM data with integer stepping across small agricultural fields,
+        # apply light 2D spatial smoothing so terraced cliffs become natural continuous slopes
+        n_points = len(points)
+        grid_dim = int(round(math.sqrt(n_points)))
+        if grid_dim * grid_dim == n_points:
+            grid_2d = np.array(elevations, dtype=float).reshape(grid_dim, grid_dim)
+            unique_vals = len(np.unique(grid_2d))
+            # If discrete integer steps (few unique elevations relative to grid size)
+            if unique_vals <= max(6, grid_dim // 2):
+                kernel = np.array([
+                    [1, 2, 1],
+                    [2, 4, 2],
+                    [1, 2, 1]
+                ], dtype=float)
+                kernel /= np.sum(kernel)
+                padded = np.pad(grid_2d, 1, mode='edge')
+                smoothed = np.zeros_like(grid_2d)
+                for r in range(grid_dim):
+                    for c in range(grid_dim):
+                        smoothed[r, c] = np.sum(padded[r:r+3, c:c+3] * kernel)
+                return [round(float(v), 2) for v in smoothed.flatten()]
+
+        return [round(e, 2) for e in elevations]
 
     async def _fetch_open_meteo(self, points: List[Tuple[float, float]]) -> Optional[List[float]]:
         """
