@@ -171,6 +171,38 @@ function generateClientTerrainSimulation(
     }
   }
 
+  const clientFlowVectors: any[] = [];
+  const stride = Math.max(1, Math.floor(resolution / 5));
+  for (let r = Math.floor(stride / 2); r < resolution; r += stride) {
+    const lat = max_lat - (r / (resolution - 1)) * (max_lat - min_lat);
+    for (let c = Math.floor(stride / 2); c < resolution; c += stride) {
+      const lng = min_lng + (c / (resolution - 1)) * (max_lng - min_lng);
+      const z = grid[r][c];
+      const zEast = c + 1 < resolution ? grid[r][c + 1] : z;
+      const zWest = c - 1 >= 0 ? grid[r][c - 1] : z;
+      const zNorth = r - 1 >= 0 ? grid[r - 1][c] : z;
+      const zSouth = r + 1 < resolution ? grid[r + 1][c] : z;
+
+      const gradX = zEast - zWest;
+      const gradY = zSouth - zNorth;
+      const vx = -gradX;
+      const vy = gradY;
+      const deg = (Math.atan2(vx, vy) * (180 / Math.PI) + 360) % 360;
+      const directions = ['North', 'North-East', 'East', 'South-East', 'South', 'South-West', 'West', 'North-West'];
+      const dIdx = Math.floor((deg + 22.5) / 45) % 8;
+
+      clientFlowVectors.push({
+        lng: Number(lng.toFixed(6)),
+        lat: Number(lat.toFixed(6)),
+        direction_deg: Number(deg.toFixed(1)),
+        cardinal_direction: directions[dIdx],
+        slope_percent: Number((Math.hypot(gradX, gradY) * 10).toFixed(1)),
+        elevation: z,
+        magnitude: 0.6,
+      });
+    }
+  }
+
   const routes = [
     {
       route_id: 'route-1',
@@ -198,6 +230,7 @@ function generateClientTerrainSimulation(
     elevation_grid: grid,
     waterlogging_zones: zones,
     zone_details: zoneDetails,
+    flow_vectors: clientFlowVectors,
     metrics: {
       min_elevation: minElev,
       max_elevation: maxElev,

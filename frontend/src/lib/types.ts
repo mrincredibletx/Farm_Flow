@@ -19,6 +19,19 @@ export interface TerrainMetrics {
   dominant_slope_direction: string;
   dominant_aspect_degrees?: number;
   average_slope_percent: number;
+  major_flow_directions?: string[];
+  is_watershed_divide?: boolean;
+  watershed_divide_type?: string;
+}
+
+export interface FlowVector {
+  lng: number;
+  lat: number;
+  direction_deg: number;
+  cardinal_direction: string;
+  slope_percent: number;
+  elevation: number;
+  magnitude: number;
 }
 
 export interface ZoneDetail {
@@ -78,6 +91,7 @@ export interface TerrainAnalysisResponse {
   waterlogging_zones: [number, number, number][]; // [lng, lat, severity]
   grid_coordinates?: [number, number][][];
   zone_details?: ZoneDetail[];
+  flow_vectors?: FlowVector[];
   metrics?: TerrainMetrics;
   summary?: string;
   // Phase II fields

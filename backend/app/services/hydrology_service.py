@@ -1,7 +1,7 @@
 import math
 from typing import List, Dict, Any, Tuple
 import numpy as np
-from app.models.terrain import TerrainMetrics
+from app.models.terrain import TerrainMetrics, FlowVector
 
 class HydrologyService:
     def __init__(self):
@@ -75,17 +75,81 @@ class HydrologyService:
         dy_meters = max(dy_meters, 1.0)
 
         # Gradient calculation (dZ/dy and dZ/dx)
+        # grad_y is along rows (axis 0: North to South)
+        # grad_x is along cols (axis 1: West to East)
         grad_y, grad_x = np.gradient(elevation_grid, dy_meters, dx_meters)
         slope_percent = np.sqrt(grad_x**2 + grad_y**2) * 100.0
 
-        # Calculate dominant aspect (slope direction)
-        mean_gx = float(np.mean(grad_x[mask]))
-        mean_gy = float(np.mean(grad_y[mask]))
-        aspect_deg = (math.degrees(math.atan2(-mean_gy, mean_gx)) + 360.0) % 360.0
+        # Downhill vector components:
+        # Latitude decreases Southward with increasing row index: dY = -dy_meters * dr
+        # Thus dZ/dY = -grad_y. Downhill Northing component vy = -dZ/dY = +grad_y.
+        # Longitude increases Eastward with increasing col index: dX = +dx_meters * dc
+        # Thus dZ/dX = +grad_x. Downhill Easting component vx = -dZ/dX = -grad_x.
+        downhill_vx = -grad_x
+        downhill_vy = grad_y
 
         directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"]
-        dir_idx = int((aspect_deg + 22.5) // 45) % 8
-        dominant_direction = f"{directions[dir_idx]} ({round(aspect_deg, 1)}°)"
+
+        # Track local flow angles and sector distributions across the field mask
+        flow_angles = np.zeros((rows, cols), dtype=float)
+        sector_counts = {d: 0 for d in directions}
+        west_flank_count = 0  # 180° to 360° (West, South-West, North-West, South)
+        east_flank_count = 0  # 0° to 180° (East, South-East, North-East, North)
+        masked_cells_count = int(np.sum(mask))
+
+        for r in range(rows):
+            for c in range(cols):
+                if not mask[r, c]:
+                    continue
+                vx = float(downhill_vx[r, c])
+                vy = float(downhill_vy[r, c])
+                ang = (math.degrees(math.atan2(vx, vy)) + 360.0) % 360.0
+                flow_angles[r, c] = ang
+
+                d_idx = int((ang + 22.5) // 45) % 8
+                cardinal = directions[d_idx]
+                sector_counts[cardinal] += 1
+
+                if 180.0 <= ang < 360.0:
+                    west_flank_count += 1
+                else:
+                    east_flank_count += 1
+
+        # Detect Mountain Ridge Divide / Bifurcated Watershed:
+        # If both opposing flanks each comprise >= 22% of the field and vertical relief is notable (>= 2.5m)
+        is_watershed_divide = False
+        watershed_type = None
+        major_flow_dirs: List[str] = []
+
+        total_masked = max(masked_cells_count, 1)
+        west_ratio = west_flank_count / total_masked
+        east_ratio = east_flank_count / total_masked
+
+        if west_ratio >= 0.22 and east_ratio >= 0.22 and elev_range >= 2.5:
+            is_watershed_divide = True
+            watershed_type = "Mountain Ridge Watershed Divide"
+
+            # Dominant directions for each flank
+            west_sectors = sorted([(k, v) for k, v in sector_counts.items() if k in ["West", "South-West", "North-West", "South"]], key=lambda x: -x[1])
+            east_sectors = sorted([(k, v) for k, v in sector_counts.items() if k in ["East", "South-East", "North-East", "North"]], key=lambda x: -x[1])
+
+            top_w = west_sectors[0][0] if west_sectors else "South-West"
+            top_e = east_sectors[0][0] if east_sectors else "South-East"
+
+            major_flow_dirs = [
+                f"{top_w} Flank ({int(round(west_ratio * 100))}%)",
+                f"{top_e} Flank ({int(round(east_ratio * 100))}%)"
+            ]
+            dominant_direction = f"Ridge Divide: {top_w} & {top_e} Flanks"
+            aspect_deg = None
+        else:
+            mean_gx = float(np.mean(grad_x[mask]))
+            mean_gy = float(np.mean(grad_y[mask]))
+            calc_aspect = (math.degrees(math.atan2(-mean_gx, mean_gy)) + 360.0) % 360.0
+            dir_idx = int((calc_aspect + 22.5) // 45) % 8
+            dominant_direction = f"{directions[dir_idx]} ({round(calc_aspect, 1)}°)"
+            aspect_deg = round(calc_aspect, 1)
+            major_flow_dirs = [dominant_direction]
 
         # Local Minimum and Waterlogging Severity Calculation
         waterlogging_zones: List[List[float]] = []
@@ -173,6 +237,32 @@ class HydrologyService:
                     "slope_percent": round(curr_slope, 2),
                 })
 
+        # Sample local flow vectors on balanced grid (~25-36 points across field)
+        flow_vectors: List[FlowVector] = []
+        stride_r = max(1, rows // 6)
+        stride_c = max(1, cols // 6)
+
+        for r in range(stride_r // 2, rows, stride_r):
+            for c in range(stride_c // 2, cols, stride_c):
+                if not mask[r, c]:
+                    continue
+                ang = float(flow_angles[r, c])
+                d_idx = int((ang + 22.5) // 45) % 8
+                cardinal = directions[d_idx]
+                loc_slope = float(slope_percent[r, c])
+                loc_elev = float(elevation_grid[r, c])
+                mag = min(max(loc_slope / 15.0, 0.25), 1.0)
+
+                flow_vectors.append(FlowVector(
+                    lng=round(float(grid_lngs[r, c]), 6),
+                    lat=round(float(grid_lats[r, c]), 6),
+                    direction_deg=round(ang, 1),
+                    cardinal_direction=cardinal,
+                    slope_percent=round(loc_slope, 1),
+                    elevation=round(loc_elev, 2),
+                    magnitude=round(mag, 2)
+                ))
+
         # Area computations
         area_sqm = self.calculate_polygon_area_sqm(coordinates)
         area_acres = area_sqm * 0.000247105
@@ -193,12 +283,21 @@ class HydrologyService:
             moderate_risk_points_count=moderate_risk_count,
             low_risk_points_count=low_risk_count,
             dominant_slope_direction=dominant_direction,
-            dominant_aspect_degrees=round(aspect_deg, 1),
-            average_slope_percent=round(avg_slope, 2)
+            dominant_aspect_degrees=aspect_deg,
+            average_slope_percent=round(avg_slope, 2),
+            major_flow_directions=major_flow_dirs,
+            is_watershed_divide=is_watershed_divide,
+            watershed_divide_type=watershed_type
         )
 
         # Concise summary
-        if high_risk_count > 0:
+        if is_watershed_divide:
+            summary = (
+                f"Terrain features a {watershed_type} with dual opposing water flow sides. "
+                f"Runoff bifurcates across the mountain crest: {major_flow_dirs[0]} vs {major_flow_dirs[1]}. "
+                f"Elevation spans {round(min_elev, 1)}m to {round(max_elev, 1)}m (relief: {round(elev_range, 1)}m)."
+            )
+        elif high_risk_count > 0:
             summary = (
                 f"Identified {high_risk_count} critical pooling depressions in the field with severe waterlogging risk. "
                 f"Field elevation spans {round(min_elev, 1)}m to {round(max_elev, 1)}m (relief: {round(elev_range, 2)}m). "
@@ -210,5 +309,5 @@ class HydrologyService:
                 f"Total relief is {round(elev_range, 2)}m with {moderate_risk_count} moderate accumulation zones."
             )
 
-        return waterlogging_zones, zone_details, metrics, summary
+        return waterlogging_zones, zone_details, metrics, summary, flow_vectors
 

@@ -62,6 +62,18 @@ class TerrainMetrics(BaseModel):
     dominant_slope_direction: str
     dominant_aspect_degrees: Optional[float] = None
     average_slope_percent: float
+    major_flow_directions: Optional[List[str]] = None
+    is_watershed_divide: Optional[bool] = False
+    watershed_divide_type: Optional[str] = None
+
+class FlowVector(BaseModel):
+    lng: float
+    lat: float
+    direction_deg: float
+    cardinal_direction: str
+    slope_percent: float
+    elevation: float
+    magnitude: float
 
 class ZoneDetail(BaseModel):
     lng: float
@@ -116,6 +128,7 @@ class TerrainResponse(BaseModel):
     waterlogging_zones: List[List[float]]  # [[lng, lat, severity], ...]
     grid_coordinates: Optional[List[List[List[float]]]] = None  # [[lng, lat] per cell]
     zone_details: Optional[List[ZoneDetail]] = None
+    flow_vectors: Optional[List[FlowVector]] = None
     metrics: Optional[TerrainMetrics] = None
     summary: Optional[str] = None
     # Phase II Extensions

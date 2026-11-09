@@ -310,6 +310,34 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
           routesGroupRef.current!.add(tubeMesh);
         }
       });
+
+      // Render 3D Surface Local Flow Direction Vectors
+      if (analysisData.flow_vectors) {
+        const bbox = analysisData.bounding_box;
+        const spanLng = bbox.max_lng - bbox.min_lng || 1;
+        const spanLat = bbox.max_lat - bbox.min_lat || 1;
+
+        analysisData.flow_vectors.forEach((vec) => {
+          const u = (vec.lng - bbox.min_lng) / spanLng;
+          const v = (vec.lat - bbox.min_lat) / spanLat;
+          const x3d = (u - 0.5) * terrainWidth;
+          const z3d = -(v - 0.5) * terrainHeight;
+
+          const normZ = (vec.elevation - minZ) / rangeZ;
+          const y3d = (normZ - 0.5) * (rangeZ * 3.5 * (verticalExaggeration / 2.0)) + 0.6;
+
+          // 3D Direction: X is Easting (+X=East, -X=West), Z is Southing (+Z=South, -Z=North)
+          const rad = (90 - vec.direction_deg) * (Math.PI / 180);
+          const dirX = Math.cos(rad);
+          const dirZ = -Math.sin(rad);
+
+          const dir3D = new THREE.Vector3(dirX, 0, dirZ).normalize();
+          const origin3D = new THREE.Vector3(x3d, y3d, z3d);
+
+          const arrowHelper = new THREE.ArrowHelper(dir3D, origin3D, 4.0, 0x00f0ff, 1.4, 0.9);
+          routesGroupRef.current!.add(arrowHelper);
+        });
+      }
     }
   }, [analysisData, verticalExaggeration, waterLevelPercent, isWireframe]);
 
@@ -377,14 +405,31 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
       {analysisData?.metrics && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 glass-panel-elevated rounded-full border border-cyan-400/40 shadow-neon-cyan animate-in fade-in duration-300">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Surface Runoff Direction:</span>
-            <span className="font-bold text-xs text-cyan-300 font-mono flex items-center gap-1.5">
-              <span className="text-cyan-400 font-black text-sm">➔</span>
-              {analysisData.metrics.dominant_slope_direction}
-            </span>
-            <span className="text-[10px] bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-500/30">
-              Downhill Flow
-            </span>
+            {analysisData.metrics.is_watershed_divide ? (
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
+                  <span className="text-sm">⛰️</span>
+                  <span>Watershed Divide:</span>
+                </span>
+                <span className="font-bold text-xs text-cyan-300 font-mono">
+                  {analysisData.metrics.major_flow_directions?.join(' & ') || analysisData.metrics.dominant_slope_direction}
+                </span>
+                <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/40 font-semibold shadow-sm">
+                  Dual Opposing Flow
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Surface Runoff Direction:</span>
+                <span className="font-bold text-xs text-cyan-300 font-mono flex items-center gap-1.5">
+                  <span className="text-cyan-400 font-black text-sm">➔</span>
+                  {analysisData.metrics.dominant_slope_direction}
+                </span>
+                <span className="text-[10px] bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-500/30">
+                  Downhill Flow
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -396,6 +441,11 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
           <span className="text-[10px] text-cyan-300/80 font-mono">Topography</span>
         </div>
         <div className="space-y-1.5 text-[11px]">
+          {analysisData?.metrics?.is_watershed_divide && (
+            <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-200 mb-1">
+              ⛰️ <strong>Ridge Crest Detected:</strong> Water divides down both the West flank and East flank.
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded bg-emerald-500 border border-white shrink-0"></span>
             <span className="text-slate-300"><strong className="text-emerald-300">Green: </strong>High Ground Ridge (~{analysisData?.metrics?.max_elevation ?? 465}m)</span>

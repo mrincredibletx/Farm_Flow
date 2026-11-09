@@ -493,61 +493,110 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       });
     }
 
-    // 4. Render Downhill Water Runoff Flow Direction Arrows
-    if (flowArrowsGroup && analysisData.bounding_box && analysisData.metrics) {
+    // 4. Render Local Downhill Water Runoff Flow Direction Vectors (Multi-directional)
+    if (flowArrowsGroup && analysisData.bounding_box) {
+      flowArrowsGroup.clearLayers();
+
+      const vectors = analysisData.flow_vectors || [];
       const bbox = analysisData.bounding_box;
-      const centerLng = (bbox.min_lng + bbox.max_lng) / 2;
-      const centerLat = (bbox.min_lat + bbox.max_lat) / 2;
       const spanLng = bbox.max_lng - bbox.min_lng;
-      const spanLat = bbox.max_lat - bbox.min_lat;
 
-      let deg = analysisData.metrics.dominant_aspect_degrees ?? 90;
-      if (analysisData.metrics.dominant_slope_direction) {
-        const match = analysisData.metrics.dominant_slope_direction.match(/\(([\d.]+)°\)/);
-        if (match) deg = parseFloat(match[1]);
-      }
+      if (vectors.length > 0) {
+        // Multi-directional local flow vector field across mountain / undulating terrain
+        const arrowLen = Math.max(spanLng * 0.045, 0.00025);
 
-      // Convert compass degree (0=N, 90=E, 180=S, 270=W) to cartesian direction
-      const rad = (90 - deg) * (Math.PI / 180);
-      const dirLng = Math.cos(rad);
-      const dirLat = Math.sin(rad);
+        vectors.forEach((vec) => {
+          // Flow direction angle (0=N, 90=E, 180=S, 270=W)
+          const rad = (90 - vec.direction_deg) * (Math.PI / 180);
+          const dx = Math.cos(rad) * arrowLen;
+          const dy = Math.sin(rad) * arrowLen;
 
-      // Generate 3 flow arrow lines across field
-      const offsets = [-0.25, 0.0, 0.25];
-      // Perp direction
-      const perpLng = -dirLat;
-      const perpLat = dirLng;
+          const startLat = vec.lat - dy * 0.45;
+          const startLng = vec.lng - dx * 0.45;
+          const endLat = vec.lat + dy * 0.55;
+          const endLng = vec.lng + dx * 0.55;
 
-      offsets.forEach((off) => {
-        const startLng = centerLng + off * spanLng * 0.7 * perpLng - dirLng * spanLng * 0.28;
-        const startLat = centerLat + off * spanLat * 0.7 * perpLat - dirLat * spanLat * 0.28;
-        const endLng = centerLng + off * spanLng * 0.7 * perpLng + dirLng * spanLng * 0.28;
-        const endLat = centerLat + off * spanLat * 0.7 * perpLat + dirLat * spanLat * 0.28;
+          // Glowing cyan polyline shaft
+          const arrowShaft = L.polyline([[startLat, startLng], [endLat, endLng]], {
+            color: '#00F0FF',
+            weight: 2.2,
+            opacity: 0.85,
+            dashArray: '3, 3',
+          });
 
-        // Flow polyline
-        const arrowLine = L.polyline([[startLat, startLng], [endLat, endLng]], {
-          color: '#38BDF8',
-          weight: 2.5,
-          opacity: 0.8,
-          dashArray: '5, 5',
-        });
-        flowArrowsGroup.addLayer(arrowLine);
+          // Arrowhead marker rotated in exact local flow direction
+          const arrowHeadIcon = L.divIcon({
+            className: 'flow-arrow-marker',
+            html: `
+              <div style="transform: rotate(${vec.direction_deg - 90}deg); color: #00F0FF; font-size: 16px; font-weight: 900; filter: drop-shadow(0 0 6px rgba(0,240,255,0.9)); line-height: 1;">
+                ➔
+              </div>
+            `,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+          });
 
-        // Arrowhead icon at the end of the line
-        const arrowHeadIcon = L.divIcon({
-          className: 'flow-arrow-marker',
-          html: `
-            <div style="transform: rotate(${deg - 90}deg); color: #38BDF8; font-size: 18px; font-weight: 900; filter: drop-shadow(0 0 6px #0284c7); line-height: 1;">
-              ➔
+          const headMarker = L.marker([endLat, endLng], { icon: arrowHeadIcon });
+
+          const tooltipHtml = `
+            <div class="text-[11px] p-1 font-sans space-y-0.5">
+              <div class="font-bold text-cyan-300">Runoff Flow: ${vec.cardinal_direction} (${vec.direction_deg.toFixed(1)}°)</div>
+              <div class="text-slate-300 text-[10px]">Elevation: <strong class="text-white">${vec.elevation.toFixed(1)}m</strong> | Slope: <strong class="text-amber-300">${vec.slope_percent.toFixed(1)}%</strong></div>
             </div>
-          `,
-          iconSize: [20, 20],
-          iconAnchor: [10, 10],
+          `;
+          arrowShaft.bindTooltip(tooltipHtml);
+          headMarker.bindTooltip(tooltipHtml);
+
+          flowArrowsGroup.addLayer(arrowShaft);
+          flowArrowsGroup.addLayer(headMarker);
         });
-        const arrowHeadMarker = L.marker([endLat, endLng], { icon: arrowHeadIcon });
-        arrowHeadMarker.bindTooltip('Surface runoff downhill flow', { direction: 'top' });
-        flowArrowsGroup.addLayer(arrowHeadMarker);
-      });
+      } else if (analysisData.metrics) {
+        // Fallback global arrows if no vector field provided
+        let deg = analysisData.metrics.dominant_aspect_degrees ?? 90;
+        if (analysisData.metrics.dominant_slope_direction) {
+          const match = analysisData.metrics.dominant_slope_direction.match(/\(([\d.]+)°\)/);
+          if (match) deg = parseFloat(match[1]);
+        }
+
+        const centerLng = (bbox.min_lng + bbox.max_lng) / 2;
+        const centerLat = (bbox.min_lat + bbox.max_lat) / 2;
+        const spanLat = bbox.max_lat - bbox.min_lat;
+        const rad = (90 - deg) * (Math.PI / 180);
+        const dirLng = Math.cos(rad);
+        const dirLat = Math.sin(rad);
+
+        const offsets = [-0.25, 0.0, 0.25];
+        const perpLng = -dirLat;
+        const perpLat = dirLng;
+
+        offsets.forEach((off) => {
+          const startLng = centerLng + off * spanLng * 0.7 * perpLng - dirLng * spanLng * 0.28;
+          const startLat = centerLat + off * spanLat * 0.7 * perpLat - dirLat * spanLat * 0.28;
+          const endLng = centerLng + off * spanLng * 0.7 * perpLng + dirLng * spanLng * 0.28;
+          const endLat = centerLat + off * spanLat * 0.7 * perpLat + dirLat * spanLat * 0.28;
+
+          const arrowLine = L.polyline([[startLat, startLng], [endLat, endLng]], {
+            color: '#38BDF8',
+            weight: 2.5,
+            opacity: 0.8,
+            dashArray: '5, 5',
+          });
+          flowArrowsGroup.addLayer(arrowLine);
+
+          const arrowHeadIcon = L.divIcon({
+            className: 'flow-arrow-marker',
+            html: `
+              <div style="transform: rotate(${deg - 90}deg); color: #38BDF8; font-size: 18px; font-weight: 900; filter: drop-shadow(0 0 6px #0284c7); line-height: 1;">
+                ➔
+              </div>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          });
+          const arrowHeadMarker = L.marker([endLat, endLng], { icon: arrowHeadIcon });
+          flowArrowsGroup.addLayer(arrowHeadMarker);
+        });
+      }
     }
   }, [L, analysisData, overlayOpacity, showSinkMarkers]);
 
@@ -560,25 +609,42 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       {analysisData?.metrics && !isDrawing && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 glass-panel-elevated rounded-full border border-cyan-400/40 shadow-neon-cyan animate-in fade-in duration-300">
           <div className="flex items-center gap-2.5">
-            <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-400/50 shadow-sm">
-              <span
-                style={{
-                  display: 'inline-block',
-                  transform: `rotate(${aspectAngle - 90}deg)`,
-                  transition: 'transform 0.5s ease',
-                }}
-                className="text-cyan-400 font-black text-xs"
-              >
-                ➔
-              </span>
-            </div>
-            <div className="text-xs">
-              <span className="text-slate-400">Surface Runoff Direction: </span>
-              <span className="font-bold text-cyan-300 font-mono">
-                {analysisData.metrics.dominant_slope_direction}
-              </span>
-              <span className="text-cyan-400 font-medium ml-1.5">(Downhill ➔)</span>
-            </div>
+            {analysisData.metrics.is_watershed_divide ? (
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
+                  <span className="text-sm">⛰️</span>
+                  <span>Watershed Divide:</span>
+                </span>
+                <span className="font-bold text-xs text-cyan-300 font-mono">
+                  {analysisData.metrics.major_flow_directions?.join(' & ') || analysisData.metrics.dominant_slope_direction}
+                </span>
+                <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/40 font-semibold shadow-sm">
+                  Dual Opposing Flow (2 Flanks)
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-400/50 shadow-sm">
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      transform: `rotate(${aspectAngle - 90}deg)`,
+                      transition: 'transform 0.5s ease',
+                    }}
+                    className="text-cyan-400 font-black text-xs"
+                  >
+                    ➔
+                  </span>
+                </div>
+                <div className="text-xs">
+                  <span className="text-slate-400">Surface Runoff Direction: </span>
+                  <span className="font-bold text-cyan-300 font-mono">
+                    {analysisData.metrics.dominant_slope_direction}
+                  </span>
+                  <span className="text-cyan-400 font-medium ml-1.5">(Downhill ➔)</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -624,7 +690,19 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             </div>
             <span className="text-[10px] text-cyan-300/80 font-mono font-medium">How To Read</span>
           </div>
+
           <div className="space-y-2 text-[11px]">
+            {analysisData.metrics?.is_watershed_divide && (
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[10.5px] space-y-1 mb-2">
+                <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <span>⛰️ Mountain Ridge Watershed Divide</span>
+                </div>
+                <p className="text-slate-300 leading-tight">
+                  Polygon traverses a mountain ridge crest. Water divides naturally into two opposing flow sides (West flank vs East flank) as shown by the diverging local flow vectors.
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center gap-2.5">
               <span className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-white shadow-sm shrink-0"></span>
               <div>
@@ -647,10 +725,10 @@ export const FieldMap: React.FC<FieldMapProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2.5">
-              <span className="text-sky-400 font-bold shrink-0 text-sm leading-none">➔</span>
+              <span className="text-cyan-400 font-bold shrink-0 text-sm leading-none">➔</span>
               <div>
-                <span className="font-semibold text-sky-300">Blue Flow Arrow: </span>
-                <span className="text-slate-300">Downhill Slope (Direction water flows naturally)</span>
+                <span className="font-semibold text-cyan-300">Local Flow Vectors: </span>
+                <span className="text-slate-300">Exact downhill direction at each point (shows both mountain sides)</span>
               </div>
             </div>
           </div>
