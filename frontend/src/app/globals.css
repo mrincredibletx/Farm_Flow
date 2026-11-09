@@ -115,6 +115,36 @@ body {
   box-shadow: 0 0 10px #F43F5E;
 }
 
+/* Custom Leaflet Tooltips for Ditch, Outlet and Sink Labels */
+.ditch-label-tooltip {
+  background: rgba(10, 16, 29, 0.92) !important;
+  color: #00F0FF !important;
+  border: 1px solid rgba(0, 240, 255, 0.5) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+}
+
+.outlet-label-tooltip {
+  background: rgba(10, 16, 29, 0.92) !important;
+  color: #34D399 !important;
+  border: 1px solid rgba(52, 211, 153, 0.6) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+}
+
+.flow-arrow-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

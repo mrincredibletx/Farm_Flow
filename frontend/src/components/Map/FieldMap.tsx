@@ -34,6 +34,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     heatmapLayer: any;
     sinkMarkersLayer: any;
     drainageRoutesLayer: any;
+    flowArrowsLayer: any;
   }>({
     tileLayer: null,
     polygonLayer: null,
@@ -41,6 +42,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     heatmapLayer: null,
     sinkMarkersLayer: null,
     drainageRoutesLayer: null,
+    flowArrowsLayer: null,
   });
 
   const [activeBaseMap, setActiveBaseMap] = useState<'dark' | 'satellite' | 'osm'>('dark');
@@ -85,6 +87,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     layersRef.current.heatmapLayer = L.layerGroup().addTo(map);
     layersRef.current.sinkMarkersLayer = L.layerGroup().addTo(map);
     layersRef.current.drainageRoutesLayer = L.layerGroup().addTo(map);
+    layersRef.current.flowArrowsLayer = L.layerGroup().addTo(map);
 
     mapInstanceRef.current = map;
 
@@ -222,14 +225,28 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     }
   }, [L, coordinates, isDrawing]);
 
-  // Render 2D Heatmap & Waterlogging Zones
+  // Compute dominant flow aspect angle for UI badge
+  const aspectAngle = React.useMemo(() => {
+    if (!analysisData?.metrics) return 90;
+    if (analysisData.metrics.dominant_aspect_degrees !== undefined) {
+      return analysisData.metrics.dominant_aspect_degrees;
+    }
+    const match = analysisData.metrics.dominant_slope_direction?.match(/\(([\d.]+)°\)/);
+    return match ? parseFloat(match[1]) : 90;
+  }, [analysisData]);
+
+  // Render 2D Heatmap, Waterlogging Zones, Primary Sinks, Drainage Ditches, and Flow Arrows
   useEffect(() => {
     if (!L || !mapInstanceRef.current) return;
     const heatmapGroup = layersRef.current.heatmapLayer;
     const sinksGroup = layersRef.current.sinkMarkersLayer;
+    const routesGroup = layersRef.current.drainageRoutesLayer;
+    const flowArrowsGroup = layersRef.current.flowArrowsLayer;
 
-    heatmapGroup.clearLayers();
-    sinksGroup.clearLayers();
+    heatmapGroup?.clearLayers();
+    sinksGroup?.clearLayers();
+    routesGroup?.clearLayers();
+    flowArrowsGroup?.clearLayers();
 
     if (!analysisData || !analysisData.waterlogging_zones) return;
 
@@ -241,18 +258,16 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       });
     }
 
-    // Compute bounding radius based on field resolution
+    // 1. Render continuous translucent heatmap overlay (no heavy borders)
     const sampleCount = zones.length;
-    const pointRadius = sampleCount > 300 ? 10 : sampleCount > 150 ? 15 : 22;
+    const pointRadius = sampleCount > 300 ? 10 : sampleCount > 150 ? 14 : 20;
 
     zones.forEach(([lng, lat, severity]) => {
       const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
       const elevText = detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...';
-      const isSink = detail ? detail.is_local_min : severity >= 0.75;
       const depressionDepth = detail?.depression_depth || 0;
       const slopePercent = detail?.slope_percent;
 
-      // Determine color based on waterlogging severity
       let fillColor = '#10B981'; // Low risk
       let strokeColor = '#059669';
 
@@ -270,26 +285,28 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       const circle = L.circle([lat, lng], {
         radius: pointRadius,
         stroke: true,
-        weight: 1,
+        weight: 0.5,
         color: strokeColor,
-        opacity: overlayOpacity * 0.8,
+        opacity: overlayOpacity * 0.25,
         fillColor: fillColor,
-        fillOpacity: overlayOpacity * 0.75,
+        fillOpacity: overlayOpacity * 0.45,
       });
 
       const riskLabel =
         severity >= 0.7
-          ? 'Severe Waterlogging Risk'
+          ? 'Severe Waterlogging Risk (Ponding Basin)'
           : severity >= 0.4
             ? 'Moderate Waterlogging Risk'
-            : 'Low / Normal Runoff';
+            : 'Low / Safe Drainage';
 
       circle.bindPopup(`
         <div class="p-1 space-y-1.5 text-xs">
-          <div class="font-bold flex items-center gap-1.5 ${severity >= 0.7 ? 'text-rose-400' : severity >= 0.4 ? 'text-amber-400' : 'text-cyan-400'
-        }">
-            <span class="w-2 h-2 rounded-full inline-block ${severity >= 0.7 ? 'bg-rose-500' : severity >= 0.4 ? 'bg-amber-500' : 'bg-cyan-500'
-        }"></span>
+          <div class="font-bold flex items-center gap-1.5 ${
+            severity >= 0.7 ? 'text-rose-400' : severity >= 0.4 ? 'text-amber-400' : 'text-cyan-400'
+          }">
+            <span class="w-2 h-2 rounded-full inline-block ${
+              severity >= 0.7 ? 'bg-rose-500' : severity >= 0.4 ? 'bg-amber-500' : 'bg-cyan-500'
+            }"></span>
             <span>${riskLabel}</span>
           </div>
           <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
@@ -306,84 +323,118 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       `);
 
       heatmapGroup.addLayer(circle);
+    });
 
-      // Radar ping marker for critical local minimums (severe sinks)
-      if (showSinkMarkers && (isSink || severity >= 0.75)) {
+    // 2. Render Top Primary Critical Sinks with clear, labeled focal pins (De-cluttered)
+    if (showSinkMarkers) {
+      const primarySinks: { lng: number; lat: number; depth: number; elev: string; sev: number }[] = [];
+
+      // Prefer start coordinates of engineered drainage routes as primary focal sinks
+      if (analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
+        analysisData.drainage_routes.forEach((r) => {
+          const detail = detailsMap.get(`${r.sink_point[0].toFixed(5)}_${r.sink_point[1].toFixed(5)}`);
+          primarySinks.push({
+            lng: r.sink_point[0],
+            lat: r.sink_point[1],
+            depth: detail?.depression_depth || 0.45,
+            elev: detail ? `${detail.elevation.toFixed(2)} m` : '461.0 m',
+            sev: r.severity || 0.85,
+          });
+        });
+      } else {
+        // Fallback: top 3 highest severity points
+        const sorted = [...zones].sort((a, b) => b[2] - a[2]).slice(0, 3);
+        sorted.forEach(([lng, lat, sev]) => {
+          const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
+          primarySinks.push({
+            lng,
+            lat,
+            depth: detail?.depression_depth || 0.35,
+            elev: detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...',
+            sev,
+          });
+        });
+      }
+
+      primarySinks.forEach((sink, idx) => {
         const pingIcon = L.divIcon({
           className: 'sink-radar-pin',
           html: `
-            <div style="position: relative; width: 32px; height: 32px;">
-              <div class="sink-ping-ring"></div>
-              <div class="sink-core-dot"></div>
+            <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+              <div class="sink-ping-ring" style="width: 36px; height: 36px;"></div>
+              <div class="sink-core-dot" style="width: 14px; height: 14px; background: #F43F5E; border: 2px solid #FFFFFF; box-shadow: 0 0 12px #F43F5E;"></div>
+              <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: rgba(15,23,42,0.92); border: 1px solid #F43F5E; color: #FDA4AF; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; box-shadow: 0 4px 10px rgba(0,0,0,0.6);">
+                🔴 Sink #${idx + 1}
+              </div>
             </div>
           `,
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
+          iconSize: [44, 44],
+          iconAnchor: [22, 22],
         });
 
-        const sinkMarker = L.marker([lat, lng], { icon: pingIcon });
+        const sinkMarker = L.marker([sink.lat, sink.lng], { icon: pingIcon });
         sinkMarker.bindPopup(`
           <div class="p-2 space-y-2 text-xs">
             <div class="font-bold text-rose-400 flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-              <span>CRITICAL TERRAIN SINK (LOCAL MINIMUM)</span>
+              <span>PRIMARY PONDING SINK #${idx + 1}</span>
             </div>
             <p class="text-[11px] text-slate-300">
-              Significant natural basin point where surface runoff accumulates, causing prolonged waterlogging.
+              Low-lying basin depression where rainwater naturally pools and cannot drain away.
             </p>
             <div class="bg-slate-900/80 p-2 rounded border border-rose-500/20 text-[11px] space-y-1">
               <div class="flex justify-between">
                 <span class="text-slate-400">Ground Elevation:</span>
-                <span class="text-cyan-300 font-bold font-mono">${elevText}</span>
+                <span class="text-cyan-300 font-bold font-mono">${sink.elev}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-slate-400">Ponding Probability:</span>
-                <span class="text-rose-300 font-bold font-mono">${Math.round(severity * 100)}%</span>
+                <span class="text-slate-400">Waterlogging Probability:</span>
+                <span class="text-rose-300 font-bold font-mono">${Math.round(sink.sev * 100)}%</span>
               </div>
-              ${depressionDepth > 0 ? `
               <div class="flex justify-between">
                 <span class="text-slate-400">Depression Depth:</span>
-                <span class="text-amber-300 font-bold font-mono">-${depressionDepth.toFixed(2)}m</span>
-              </div>` : ''}
-              <div class="flex justify-between">
-                <span class="text-slate-400">Position:</span>
-                <span class="font-mono text-slate-300">${lng.toFixed(5)}, ${lat.toFixed(5)}</span>
+                <span class="text-amber-300 font-bold font-mono">-${sink.depth.toFixed(2)}m</span>
               </div>
             </div>
           </div>
         `);
         sinksGroup.addLayer(sinkMarker);
-      }
-    });
+      });
+    }
 
-    const routesGroup = layersRef.current.drainageRoutesLayer;
-    if (routesGroup) {
-      routesGroup.clearLayers();
-
-      // Render Engineered Drainage Ditch Routes (A* Pathfinding)
-      if (analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
+    // 3. Render Engineered Drainage Ditch Routes (A* Pathfinding) with on-line labels
+    if (routesGroup && analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
       analysisData.drainage_routes.forEach((route, idx) => {
         const latLngs = route.path_coordinates.map((pt) => [pt[1], pt[0]]);
 
-        // Ditch Polyline with glowing neon styling
         const ditchLine = L.polyline(latLngs, {
           color: '#00F0FF',
-          weight: 4,
+          weight: 4.5,
           opacity: 0.95,
           dashArray: '8, 8',
           lineCap: 'round',
           lineJoin: 'round',
         });
 
+        // Permanent on-line label badge
+        ditchLine.bindTooltip(`💧 Ditch #${idx + 1} (${route.length_meters.toFixed(0)}m)`, {
+          permanent: true,
+          direction: 'center',
+          className: 'ditch-label-tooltip',
+        });
+
         ditchLine.bindPopup(`
           <div class="p-2 space-y-2 text-xs">
             <div class="font-bold text-cyan-400 flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-              <span>ENGINEERED DRAINAGE ROUTE #${idx + 1}</span>
+              <span>ENGINEERED DRAINAGE DITCH #${idx + 1}</span>
             </div>
+            <p class="text-[11px] text-slate-300">
+              Excavate this trench path from the waterlogged sink to the safe boundary outlet to drain surface water by gravity.
+            </p>
             <div class="p-2 rounded bg-slate-900/80 border border-cyan-500/20 text-[11px] space-y-1">
               <div class="flex justify-between">
-                <span class="text-slate-400">Total Length:</span>
+                <span class="text-slate-400">Trench Length:</span>
                 <span class="font-mono font-bold text-white">${route.length_meters.toFixed(1)} m</span>
               </div>
               <div class="flex justify-between">
@@ -395,7 +446,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
                 <span class="font-mono text-slate-200">${route.slope_percent.toFixed(2)}%</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-slate-400">Earthwork Cut:</span>
+                <span class="text-slate-400">Excavation Volume:</span>
                 <span class="font-mono text-amber-300">${route.excavation_volume_m3.toFixed(1)} m³</span>
               </div>
               <div class="flex justify-between border-t border-white/10 pt-1">
@@ -416,29 +467,121 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         const outletIcon = L.divIcon({
           className: 'ditch-outlet-pin',
           html: `
-            <div style="background: #10B981; width: 14px; height: 14px; border: 2px solid #FFFFFF; border-radius: 3px; box-shadow: 0 0 10px #10B981;" title="Discharge Outlet"></div>
+            <div style="background: #10B981; width: 16px; height: 16px; border: 2px solid #FFFFFF; border-radius: 4px; box-shadow: 0 0 12px #10B981; display: flex; align-items: center; justify-content: center;" title="Discharge Outlet">
+              <div style="width: 6px; height: 6px; background: white; border-radius: 1px;"></div>
+            </div>
           `,
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
         });
 
         const outletMarker = L.marker([outletCoord[1], outletCoord[0]], { icon: outletIcon });
+        outletMarker.bindTooltip(`🟢 Outlet #${idx + 1}`, {
+          permanent: true,
+          direction: 'top',
+          className: 'outlet-label-tooltip',
+        });
         outletMarker.bindPopup(`
-          <div class="p-1.5 text-xs space-y-1">
+          <div class="p-2 text-xs space-y-1">
             <div class="font-bold text-emerald-400">DISCHARGE OUTLET #${idx + 1}</div>
-            <div class="text-[11px] text-slate-300">Natural field boundary drainage escape point.</div>
+            <div class="text-[11px] text-slate-300">
+              Safe natural field boundary exit point where trench water discharges into surrounding drains or swales.
+            </div>
           </div>
         `);
         routesGroup.addLayer(outletMarker);
       });
     }
-  }
+
+    // 4. Render Downhill Water Runoff Flow Direction Arrows
+    if (flowArrowsGroup && analysisData.bounding_box && analysisData.metrics) {
+      const bbox = analysisData.bounding_box;
+      const centerLng = (bbox.min_lng + bbox.max_lng) / 2;
+      const centerLat = (bbox.min_lat + bbox.max_lat) / 2;
+      const spanLng = bbox.max_lng - bbox.min_lng;
+      const spanLat = bbox.max_lat - bbox.min_lat;
+
+      let deg = analysisData.metrics.dominant_aspect_degrees ?? 90;
+      if (analysisData.metrics.dominant_slope_direction) {
+        const match = analysisData.metrics.dominant_slope_direction.match(/\(([\d.]+)°\)/);
+        if (match) deg = parseFloat(match[1]);
+      }
+
+      // Convert compass degree (0=N, 90=E, 180=S, 270=W) to cartesian direction
+      const rad = (90 - deg) * (Math.PI / 180);
+      const dirLng = Math.cos(rad);
+      const dirLat = Math.sin(rad);
+
+      // Generate 3 flow arrow lines across field
+      const offsets = [-0.25, 0.0, 0.25];
+      // Perp direction
+      const perpLng = -dirLat;
+      const perpLat = dirLng;
+
+      offsets.forEach((off) => {
+        const startLng = centerLng + off * spanLng * 0.7 * perpLng - dirLng * spanLng * 0.28;
+        const startLat = centerLat + off * spanLat * 0.7 * perpLat - dirLat * spanLat * 0.28;
+        const endLng = centerLng + off * spanLng * 0.7 * perpLng + dirLng * spanLng * 0.28;
+        const endLat = centerLat + off * spanLat * 0.7 * perpLat + dirLat * spanLat * 0.28;
+
+        // Flow polyline
+        const arrowLine = L.polyline([[startLat, startLng], [endLat, endLng]], {
+          color: '#38BDF8',
+          weight: 2.5,
+          opacity: 0.8,
+          dashArray: '5, 5',
+        });
+        flowArrowsGroup.addLayer(arrowLine);
+
+        // Arrowhead icon at the end of the line
+        const arrowHeadIcon = L.divIcon({
+          className: 'flow-arrow-marker',
+          html: `
+            <div style="transform: rotate(${deg - 90}deg); color: #38BDF8; font-size: 18px; font-weight: 900; filter: drop-shadow(0 0 6px #0284c7); line-height: 1;">
+              ➔
+            </div>
+          `,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+        const arrowHeadMarker = L.marker([endLat, endLng], { icon: arrowHeadIcon });
+        arrowHeadMarker.bindTooltip('Surface runoff downhill flow', { direction: 'top' });
+        flowArrowsGroup.addLayer(arrowHeadMarker);
+      });
+    }
   }, [L, analysisData, overlayOpacity, showSinkMarkers]);
 
   return (
     <div className="relative w-full h-full">
       {/* Map DOM Container */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+      {/* Top Center Flow Direction Indicator (Telemetry HUD) */}
+      {analysisData?.metrics && !isDrawing && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 glass-panel-elevated rounded-full border border-cyan-400/40 shadow-neon-cyan animate-in fade-in duration-300">
+          <div className="flex items-center gap-2.5">
+            <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-400/50 shadow-sm">
+              <span
+                style={{
+                  display: 'inline-block',
+                  transform: `rotate(${aspectAngle - 90}deg)`,
+                  transition: 'transform 0.5s ease',
+                }}
+                className="text-cyan-400 font-black text-xs"
+              >
+                ➔
+              </span>
+            </div>
+            <div className="text-xs">
+              <span className="text-slate-400">Surface Runoff Direction: </span>
+              <span className="font-bold text-cyan-300 font-mono">
+                {analysisData.metrics.dominant_slope_direction}
+              </span>
+              <span className="text-cyan-400 font-medium ml-1.5">(Downhill ➔)</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Basemap Switcher */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 p-1 glass-panel rounded-xl shadow-xl">
@@ -470,6 +613,49 @@ export const FieldMap: React.FC<FieldMapProps> = ({
           Street
         </button>
       </div>
+
+      {/* Floating Map Visual Guide & Legend Card */}
+      {analysisData && (
+        <div className="absolute bottom-6 left-6 z-20 glass-panel-elevated p-3.5 rounded-2xl border border-cyan-500/30 max-w-xs shadow-2xl backdrop-blur-md">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-neon-cyan"></span>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Map Visual Guide</h4>
+            </div>
+            <span className="text-[10px] text-cyan-300/80 font-mono font-medium">How To Read</span>
+          </div>
+          <div className="space-y-2 text-[11px]">
+            <div className="flex items-center gap-2.5">
+              <span className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-white shadow-sm shrink-0"></span>
+              <div>
+                <span className="font-semibold text-rose-300">Red Sinks: </span>
+                <span className="text-slate-300">Depression where rainwater traps & pools</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <span className="w-3.5 h-3.5 rounded bg-emerald-500 border border-white shadow-sm shrink-0"></span>
+              <div>
+                <span className="font-semibold text-emerald-300">Green Square: </span>
+                <span className="text-slate-300">Field Outlet (Where water leaves your land)</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-4 h-1 bg-cyan-400 border-t border-b border-dashed border-cyan-200 shrink-0"></div>
+              <div>
+                <span className="font-semibold text-cyan-300">Cyan Dashed Line: </span>
+                <span className="text-slate-300">Trench to Dig (Recommended drainage ditch)</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <span className="text-sky-400 font-bold shrink-0 text-sm leading-none">➔</span>
+              <div>
+                <span className="font-semibold text-sky-300">Blue Flow Arrow: </span>
+                <span className="text-slate-300">Downhill Slope (Direction water flows naturally)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* In-Map Drawing Notification Bar */}
       {isDrawing && (

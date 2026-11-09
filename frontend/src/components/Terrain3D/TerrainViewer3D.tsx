@@ -373,6 +373,48 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
         </div>
       </div>
 
+      {/* Top Center Flow Direction Indicator (Telemetry HUD) */}
+      {analysisData?.metrics && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 glass-panel-elevated rounded-full border border-cyan-400/40 shadow-neon-cyan animate-in fade-in duration-300">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400">Surface Runoff Direction:</span>
+            <span className="font-bold text-xs text-cyan-300 font-mono flex items-center gap-1.5">
+              <span className="text-cyan-400 font-black text-sm">➔</span>
+              {analysisData.metrics.dominant_slope_direction}
+            </span>
+            <span className="text-[10px] bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-500/30">
+              Downhill Flow
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 3D Visual Mesh Guide Card (Top Right) */}
+      <div className="absolute top-4 right-4 z-20 glass-panel-elevated p-3 rounded-2xl border border-cyan-500/30 max-w-xs shadow-2xl backdrop-blur-md hidden md:block">
+        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/10">
+          <span className="text-xs font-bold text-white uppercase tracking-wider">3D Mesh Guide</span>
+          <span className="text-[10px] text-cyan-300/80 font-mono">Topography</span>
+        </div>
+        <div className="space-y-1.5 text-[11px]">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded bg-emerald-500 border border-white shrink-0"></span>
+            <span className="text-slate-300"><strong className="text-emerald-300">Green: </strong>High Ground Ridge (~{analysisData?.metrics?.max_elevation ?? 465}m)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded bg-rose-500 border border-white shrink-0"></span>
+            <span className="text-slate-300"><strong className="text-rose-300">Red: </strong>Low Ponding Basin (~{analysisData?.metrics?.min_elevation ?? 461}m)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-1.5 rounded-full bg-cyan-400 shadow-neon-cyan shrink-0"></div>
+            <span className="text-slate-300"><strong className="text-cyan-300">Cyan Tubes: </strong>3 Drainage Trench Paths</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded bg-blue-500/80 border border-blue-300 shrink-0"></span>
+            <span className="text-slate-300"><strong className="text-blue-300">Blue Plane: </strong>Simulated Rainwater Pool</span>
+          </div>
+        </div>
+      </div>
+
       {/* Floating Water Ponding Level Control (Bottom Left) */}
       <div className="absolute bottom-6 left-4 z-20 p-3.5 glass-panel rounded-2xl shadow-2xl border border-white/10 w-72 space-y-2">
         <div className="flex items-center justify-between text-xs">
