@@ -110,3 +110,4 @@ class WeatherService:
         except Exception as e:
             logger.warning(f"Tomorrow.io query failed: {e}")
         return None
+
