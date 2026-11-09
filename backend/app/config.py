@@ -10,8 +10,16 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
-    # Optional API keys
+    # External API Keys
     GOOGLE_MAPS_API_KEY: str = os.getenv("GOOGLE_MAPS_API_KEY", "")
+    MAPBOX_ACCESS_TOKEN: str = os.getenv("MAPBOX_ACCESS_TOKEN", "")
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    OPENWEATHER_API_KEY: str = os.getenv("OPENWEATHER_API_KEY", "")
+    TOMORROW_IO_API_KEY: str = os.getenv("TOMORROW_IO_API_KEY", "")
+    
+    # Optional Database & Storage
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./drainage_system.db")
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     
     # Grid settings for terrain sampling
     DEFAULT_GRID_RESOLUTION: int = 18

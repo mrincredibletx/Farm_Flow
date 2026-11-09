@@ -57,15 +57,25 @@ Provide a practical, clear agronomic advisory for the farmer:
 4. 2 Soil Aeration / Post-inundation tips
 5. Estimated ROI / Cost-Benefit Summary
 """
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        text = response.text or ""
+        response = None
+        used_model = "Gemini 3.5 Flash Lite"
+        for model_name in ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest']:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                if response and response.text:
+                    used_model = model_name
+                    break
+            except Exception as e:
+                logger.debug(f"Gemini {model_name} attempt failed: {e}")
+
+        text = response.text if response else ""
         return {
             "headline": f"Optimized Hydrological Management Plan for {crop_type} in {soil_type.title()} Soil",
             "full_text": text,
-            "generated_by": "Gemini 2.5 Flash LLM (Live Agronomic Model)",
+            "generated_by": f"{used_model} LLM (Live Agronomic Model)",
             "drainage_recommendations": [
                 f"Install recommended surface ditch channels along the natural {metrics.get('dominant_slope_direction', 'southern')} gradient to prevent standing water.",
                 f"For critical basins, establish a 0.6m deep gravel-bed French drain to accelerate percolation.",
