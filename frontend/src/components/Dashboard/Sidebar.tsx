@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { TerrainAnalysisResponse, SampleField } from '@/lib/types';
+import { TerrainAnalysisResponse } from '@/lib/types';
 import { TerrainMetricsCard } from './TerrainMetricsCard';
 import { generateAgronomicPDFReport } from '@/lib/pdfExport';
 import {
@@ -25,6 +25,7 @@ import {
   ShieldAlert,
   Scissors,
   Shovel,
+  Compass,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -36,8 +37,8 @@ interface SidebarProps {
   onAnalyze: (soil?: string, crop?: string, rain?: number) => void;
   isAnalyzing: boolean;
   analysisData: TerrainAnalysisResponse | null;
-  sampleFields: SampleField[];
-  onSelectSampleField: (field: SampleField) => void;
+  userLocation?: { lat: number; lng: number } | null;
+  onLocateDevice?: () => void;
   onOpenGridInspector: () => void;
   onOpenElevationProfile?: () => void;
 }
@@ -51,25 +52,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onAnalyze,
   isAnalyzing,
   analysisData,
-  sampleFields,
-  onSelectSampleField,
+  userLocation,
+  onLocateDevice,
   onOpenGridInspector,
   onOpenElevationProfile,
 }) => {
   const [activeTab, setActiveTab] = useState<'hydrology' | 'drainage' | 'grading' | 'simulator' | 'advisory'>('hydrology');
-  const [selectedFieldId, setSelectedFieldId] = useState<string>('');
   const [soilType, setSoilType] = useState<string>('clay');
   const [cropType, setCropType] = useState<string>('Wheat');
   const [rainfallMm, setRainfallMm] = useState<number>(65);
-
-  const handleFieldChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const fieldId = e.target.value;
-    setSelectedFieldId(fieldId);
-    const field = sampleFields.find((f) => f.id === fieldId);
-    if (field) {
-      onSelectSampleField(field);
-    }
-  };
 
   const handleTriggerAnalysis = () => {
     onAnalyze(soilType, cropType, rainfallMm);
@@ -147,30 +138,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Main Scrollable Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Preset Agricultural Fields Selector */}
-        <div className="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-2">
+        {/* Device GPS Location Card */}
+        <div className="p-3 rounded-xl bg-slate-900/60 border border-cyan-500/20 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-200 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Preset Agricultural Fields</span>
+              <Compass className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Current Device Location</span>
             </span>
-            <span className="text-[10px] font-mono text-cyan-400">1-Click Demo</span>
+            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+              ● Live GPS
+            </span>
           </div>
 
-          <select
-            value={selectedFieldId}
-            onChange={handleFieldChange}
-            className="w-full px-3 py-1.5 text-xs glass-input rounded-lg text-slate-200 cursor-pointer focus:outline-none"
-          >
-            <option value="" className="bg-slate-900 text-slate-400">
-              Select or load test field...
-            </option>
-            {sampleFields.map((field) => (
-              <option key={field.id} value={field.id} className="bg-slate-900 text-slate-100">
-                {field.name} ({field.location})
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between text-[11px] p-2 rounded-lg bg-slate-950/60 border border-white/5">
+            <span className="text-slate-400">Coordinates:</span>
+            <span className="font-mono text-cyan-300 font-bold">
+              {userLocation
+                ? `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`
+                : 'Detecting device GPS...'}
+            </span>
+          </div>
+
+          {onLocateDevice && (
+            <button
+              onClick={onLocateDevice}
+              className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold glass-panel hover:bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 flex items-center justify-center gap-2 transition-all shadow-sm"
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Re-Center Map to My Location</span>
+            </button>
+          )}
         </div>
 
         {/* Boundary Mapping Controls */}

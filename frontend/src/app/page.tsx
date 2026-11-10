@@ -8,8 +8,8 @@ import { SearchBar } from '@/components/Map/SearchBar';
 import { MapLegend } from '@/components/Map/MapLegend';
 import { ElevationGridInspector } from '@/components/Dashboard/ElevationGridInspector';
 import { ElevationProfileDrawer } from '@/components/Map/ElevationProfileDrawer';
-import { analyzeTerrain, fetchSampleFields } from '@/lib/api';
-import { TerrainAnalysisResponse, SampleField, ElevationProfilePoint } from '@/lib/types';
+import { analyzeTerrain } from '@/lib/api';
+import { TerrainAnalysisResponse, ElevationProfilePoint } from '@/lib/types';
 import { generateAgronomicPDFReport } from '@/lib/pdfExport';
 import { AlertCircle, X, Box, Map as MapIcon, Loader2 } from 'lucide-react';
 
@@ -51,8 +51,8 @@ export default function Home() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<TerrainAnalysisResponse | null>(null);
-  const [sampleFields, setSampleFields] = useState<SampleField[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [overlayOpacity, setOverlayOpacity] = useState(0.8);
   const [showSinkMarkers, setShowSinkMarkers] = useState(true);
   const [isGridInspectorOpen, setIsGridInspectorOpen] = useState(false);
@@ -63,18 +63,41 @@ export default function Home() {
   const [profilePoints, setProfilePoints] = useState<ElevationProfilePoint[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // Load sample fields and initialize with UEM Jaipur demo field
+  // Automatically locate user's device on mount
+  const locateUserDevice = () => {
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const loc = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setUserLocation(loc);
+          setSelectedLocation(loc);
+        },
+        async (error) => {
+          console.warn('Browser geolocation failed or permission denied, using IP fallback:', error);
+          try {
+            const res = await fetch('https://ipapi.co/json/');
+            if (res.ok) {
+              const data = await res.json();
+              if (data.latitude && data.longitude) {
+                const loc = { lat: data.latitude, lng: data.longitude };
+                setUserLocation(loc);
+                setSelectedLocation(loc);
+              }
+            }
+          } catch (e) {
+            console.warn('IP fallback failed:', e);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+  };
+
   useEffect(() => {
-    fetchSampleFields().then((fields) => {
-      setSampleFields(fields);
-      if (fields.length > 0) {
-        const uem = fields.find((f) => f.id === 'uem-jaipur-demo') || fields[0];
-        setCoordinates(uem.coordinates);
-        setSelectedLocation({ lat: uem.center[1], lng: uem.center[0] });
-        // Automatically analyze initial field for instant evaluation presentation
-        handleAnalyze(uem.coordinates, 'clay', 'Wheat', 65);
-      }
-    });
+    locateUserDevice();
   }, []);
 
   // Run Hydrology & Phase II Analysis
@@ -100,13 +123,6 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  const handleSelectSampleField = (field: SampleField) => {
-    setCoordinates(field.coordinates);
-    setSelectedLocation({ lat: field.center[1], lng: field.center[0] });
-    setAnalysisData(null);
-    handleAnalyze(field.coordinates);
   };
 
   const handleUndoPoint = () => {
@@ -153,8 +169,8 @@ export default function Home() {
           onAnalyze={(soil, crop, rain) => handleAnalyze(coordinates, soil, crop, rain)}
           isAnalyzing={isAnalyzing}
           analysisData={analysisData}
-          sampleFields={sampleFields}
-          onSelectSampleField={handleSelectSampleField}
+          userLocation={userLocation}
+          onLocateDevice={locateUserDevice}
           onOpenGridInspector={() => setIsGridInspectorOpen(true)}
           onOpenElevationProfile={() => {
             if (profilePoints.length > 0) {
@@ -236,6 +252,7 @@ export default function Home() {
                   setProfilePoints(pts);
                   setIsProfileOpen(true);
                 }}
+                onLocateDevice={locateUserDevice}
               />
             </>
           ) : (

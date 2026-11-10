@@ -13,6 +13,7 @@ import {
   Scissors,
   Shovel,
   Compass,
+  Crosshair,
 } from 'lucide-react';
 
 interface FieldMapProps {
@@ -27,6 +28,7 @@ interface FieldMapProps {
   mapMode: 'drainage' | 'grading';
   onToggleMapMode: (mode: 'drainage' | 'grading') => void;
   onProfileGenerated: (points: ElevationProfilePoint[]) => void;
+  onLocateDevice?: () => void;
 }
 
 export const FieldMap: React.FC<FieldMapProps> = ({
@@ -41,6 +43,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
   mapMode,
   onToggleMapMode,
   onProfileGenerated,
+  onLocateDevice,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -54,6 +57,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     drainageRoutesLayer: any;
     flowArrowsLayer: any;
     profileLineLayer: any;
+    userLocationLayer: any;
   }>({
     tileLayer: null,
     polygonLayer: null,
@@ -64,6 +68,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     drainageRoutesLayer: null,
     flowArrowsLayer: null,
     profileLineLayer: null,
+    userLocationLayer: null,
   });
 
   const [activeBaseMap, setActiveBaseMap] = useState<'dark' | 'satellite' | 'osm'>('satellite');
@@ -118,6 +123,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     layersRef.current.drainageRoutesLayer = L.layerGroup().addTo(map);
     layersRef.current.flowArrowsLayer = L.layerGroup().addTo(map);
     layersRef.current.profileLineLayer = L.layerGroup().addTo(map);
+    layersRef.current.userLocationLayer = L.layerGroup().addTo(map);
 
     // Mouse Move listener for real-time elevation & GPS HUD
     map.on('mousemove', (e: any) => {
@@ -211,13 +217,40 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     layersRef.current.tileLayer = newTileLayer;
   }, [activeBaseMap, L]);
 
-  // Handle Location Search Pan
+  // Handle Location Search Pan & Device GPS Pin
   useEffect(() => {
-    if (!selectedLocation || !mapInstanceRef.current) return;
-    mapInstanceRef.current.flyTo([selectedLocation.lat, selectedLocation.lng], 16, {
-      duration: 1.5,
+    if (!selectedLocation || !mapInstanceRef.current || !L) return;
+    mapInstanceRef.current.flyTo([selectedLocation.lat, selectedLocation.lng], 18, {
+      duration: 1.8,
     });
-  }, [selectedLocation]);
+
+    if (layersRef.current.userLocationLayer) {
+      layersRef.current.userLocationLayer.clearLayers();
+      const gpsIcon = L.divIcon({
+        className: 'user-gps-location-pin',
+        html: `
+          <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(0, 240, 255, 0.25); border: 1.5px solid rgba(0, 240, 255, 0.6); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: #00F0FF; border: 2.5px solid #FFFFFF; box-shadow: 0 0 16px #00F0FF;"></div>
+          </div>
+        `,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+      const marker = L.marker([selectedLocation.lat, selectedLocation.lng], { icon: gpsIcon });
+      marker.bindPopup(`
+        <div class="p-1 text-xs">
+          <div class="font-bold text-cyan-400 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+            <span>YOUR DEVICE LOCATION</span>
+          </div>
+          <div class="text-[11px] text-slate-300 font-mono mt-1">${selectedLocation.lat.toFixed(5)}, ${selectedLocation.lng.toFixed(5)}</div>
+          <p class="text-[10px] text-slate-400 mt-1">Use "Draw Boundary" to map your field polygon directly over this satellite imagery.</p>
+        </div>
+      `);
+      layersRef.current.userLocationLayer.addLayer(marker);
+    }
+  }, [selectedLocation, L]);
 
   // Map Click Handler for Field Drawing & Profile Transect
   useEffect(() => {
@@ -745,8 +778,18 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         </div>
       )}
 
-      {/* Floating Basemap Switcher */}
+      {/* Floating Basemap Switcher & Device Geolocation */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-1 p-1 glass-panel rounded-xl shadow-xl">
+        {onLocateDevice && (
+          <button
+            onClick={onLocateDevice}
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/20 hover:bg-cyan-500/35 text-cyan-300 border border-cyan-400/50 flex items-center gap-1.5 transition-all shadow-neon-cyan mr-1"
+            title="Locate My Device (GPS)"
+          >
+            <Crosshair className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span>My Location</span>
+          </button>
+        )}
         <button
           onClick={() => setActiveBaseMap('satellite')}
           className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
