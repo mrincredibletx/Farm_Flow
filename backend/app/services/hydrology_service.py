@@ -95,6 +95,8 @@ class HydrologyService:
         sector_counts = {d: 0 for d in directions}
         west_flank_count = 0  # 180° to 360° (West, South-West, North-West, South)
         east_flank_count = 0  # 0° to 180° (East, South-East, North-East, North)
+        north_flank_count = 0  # vy > 0 (Northward descent)
+        south_flank_count = 0  # vy < 0 (Southward descent)
         masked_cells_count = int(np.sum(mask))
 
         for r in range(rows):
@@ -115,32 +117,54 @@ class HydrologyService:
                 else:
                     east_flank_count += 1
 
+                if vy > 0:
+                    north_flank_count += 1
+                else:
+                    south_flank_count += 1
+
         # Detect Mountain Ridge Divide / Bifurcated Watershed:
-        # If both opposing flanks each comprise >= 22% of the field and vertical relief is notable (>= 2.5m)
+        # Check both East-West divide and North-South divide
+        total_masked = max(masked_cells_count, 1)
+        west_ratio = west_flank_count / total_masked
+        east_ratio = east_flank_count / total_masked
+        north_ratio = north_flank_count / total_masked
+        south_ratio = south_flank_count / total_masked
+
         is_watershed_divide = False
         watershed_type = None
         major_flow_dirs: List[str] = []
 
-        total_masked = max(masked_cells_count, 1)
-        west_ratio = west_flank_count / total_masked
-        east_ratio = east_flank_count / total_masked
-
-        if west_ratio >= 0.22 and east_ratio >= 0.22 and elev_range >= 2.5:
+        if west_ratio >= 0.20 and east_ratio >= 0.20 and elev_range >= 1.5:
             is_watershed_divide = True
-            watershed_type = "Mountain Ridge Watershed Divide"
+            watershed_type = "Mountain Ridge Watershed Divide (East-West)"
 
-            # Dominant directions for each flank
             west_sectors = sorted([(k, v) for k, v in sector_counts.items() if k in ["West", "South-West", "North-West", "South"]], key=lambda x: -x[1])
             east_sectors = sorted([(k, v) for k, v in sector_counts.items() if k in ["East", "South-East", "North-East", "North"]], key=lambda x: -x[1])
 
-            top_w = west_sectors[0][0] if west_sectors else "South-West"
-            top_e = east_sectors[0][0] if east_sectors else "South-East"
+            top_w = west_sectors[0][0] if west_sectors else "West"
+            top_e = east_sectors[0][0] if east_sectors else "East"
 
             major_flow_dirs = [
                 f"{top_w} Flank ({int(round(west_ratio * 100))}%)",
                 f"{top_e} Flank ({int(round(east_ratio * 100))}%)"
             ]
             dominant_direction = f"Ridge Divide: {top_w} & {top_e} Flanks"
+            aspect_deg = None
+        elif north_ratio >= 0.20 and south_ratio >= 0.20 and elev_range >= 1.5:
+            is_watershed_divide = True
+            watershed_type = "Mountain Ridge Watershed Divide (North-South)"
+
+            north_sectors = sorted([(k, v) for k, v in sector_counts.items() if k in ["North", "North-East", "North-West"]], key=lambda x: -x[1])
+            south_sectors = sorted([(k, v) for k, v in sector_counts.items() if k in ["South", "South-East", "South-West"]], key=lambda x: -x[1])
+
+            top_n = north_sectors[0][0] if north_sectors else "North"
+            top_s = south_sectors[0][0] if south_sectors else "South"
+
+            major_flow_dirs = [
+                f"{top_n} Flank ({int(round(north_ratio * 100))}%)",
+                f"{top_s} Flank ({int(round(south_ratio * 100))}%)"
+            ]
+            dominant_direction = f"Ridge Divide: {top_n} & {top_s} Flanks"
             aspect_deg = None
         else:
             mean_gx = float(np.mean(grad_x[mask]))
@@ -168,6 +192,9 @@ class HydrologyService:
                 curr_lng = float(grid_lngs[r, c])
                 curr_slope = float(slope_percent[r, c])
 
+                # Normalized elevation component (0 at max elevation, 1 at min elevation)
+                elevation_deficit = (max_elev - curr_z) / elev_range  # [0, 1]
+
                 # Gather neighbor elevations
                 neighbor_vals = []
                 for dr in [-1, 0, 1]:
@@ -184,33 +211,33 @@ class HydrologyService:
                 if neighbor_vals:
                     min_neighbor = min(neighbor_vals)
                     avg_neighbor = sum(neighbor_vals) / len(neighbor_vals)
-                    # A true local depression is strictly lower than neighbors
+                    max_neighbor = max(neighbor_vals)
+                    # A true local depression sink is lower than all surrounding neighbors
                     if curr_z < min_neighbor - 0.01:
                         is_local_min = True
-                        depression_depth = max(0.01, avg_neighbor - curr_z)
-                    elif curr_z < avg_neighbor - 0.04:
-                        is_local_min = True
-                        depression_depth = max(0.01, avg_neighbor - curr_z)
-                    elif curr_z <= min_neighbor and elevation_deficit > 0.85 and curr_slope < 1.2:
-                        # Deepest low-lying flat basin floor where ponding settles
-                        is_local_min = True
                         depression_depth = max(0.02, avg_neighbor - curr_z)
+                    elif curr_z <= min_neighbor + 1e-4 and (avg_neighbor - curr_z) >= 0.03:
+                        is_local_min = True
+                        depression_depth = max(0.03, avg_neighbor - curr_z)
 
-                # Normalized elevation component (0 at max elevation, 1 at min elevation)
-                elevation_deficit = (max_elev - curr_z) / elev_range  # [0, 1]
-
-                # Sluggish drainage component: low slopes (< 1.5%) retain water
-                flatness_factor = max(0.0, min(1.0, (1.5 - curr_slope) / 1.5))
-
-                # Compute weighted severity score in [0.0, 1.0]
+                # Physically calibrated agricultural waterlogging severity [0.05, 0.95]:
                 if is_local_min:
-                    # True sink basin point
-                    severity = 0.60 + 0.25 * elevation_deficit + 0.15 * min(depression_depth / 0.35, 1.0)
+                    # True depression basin / sink: water cannot escape by gravity
+                    severity = 0.75 + 0.15 * elevation_deficit + 0.10 * min(depression_depth / 0.25, 1.0)
+                elif curr_slope < 0.4 and elevation_deficit > 0.85:
+                    # Extremely flat receiving basin floor at lowest contour
+                    severity = 0.65 + 0.25 * (1.0 - curr_slope / 0.4) * ((elevation_deficit - 0.85) / 0.15)
+                elif curr_slope < 0.8:
+                    # Sluggish drainage flat
+                    severity = 0.35 + 0.25 * (1.0 - curr_slope / 0.8) * elevation_deficit
+                elif curr_slope < 1.5:
+                    # Gentle grade with mild drainage delay
+                    severity = 0.20 + 0.20 * (1.0 - (curr_slope - 0.8) / 0.7) * elevation_deficit
                 else:
-                    # General terrain pooling probability
-                    severity = (0.50 * elevation_deficit) + (0.25 * flatness_factor) + (0.25 * min(depression_depth / 0.35, 1.0))
+                    # Normal healthy slope (>= 1.5%): water naturally sheds off
+                    severity = 0.10 + 0.15 * max(0.0, 1.0 - curr_slope / 5.0) * elevation_deficit
 
-                severity = round(float(np.clip(severity, 0.0, 1.0)), 3)
+                severity = round(float(np.clip(severity, 0.05, 0.95)), 3)
 
                 # Categorize risk counts
                 if severity >= 0.70:
@@ -237,31 +264,38 @@ class HydrologyService:
                     "slope_percent": round(curr_slope, 2),
                 })
 
-        # Sample local flow vectors on balanced grid (~25-36 points across field)
+        # Sample local flow vectors on balanced grid
         flow_vectors: List[FlowVector] = []
         stride_r = max(1, rows // 6)
         stride_c = max(1, cols // 6)
 
-        for r in range(stride_r // 2, rows, stride_r):
-            for c in range(stride_c // 2, cols, stride_c):
-                if not mask[r, c]:
-                    continue
-                ang = float(flow_angles[r, c])
-                d_idx = int((ang + 22.5) // 45) % 8
-                cardinal = directions[d_idx]
-                loc_slope = float(slope_percent[r, c])
-                loc_elev = float(elevation_grid[r, c])
-                mag = min(max(loc_slope / 15.0, 0.25), 1.0)
+        def sample_vectors(s_r, s_c):
+            vecs = []
+            for r in range(s_r // 2, rows, s_r):
+                for c in range(s_c // 2, cols, s_c):
+                    if not mask[r, c]:
+                        continue
+                    ang = float(flow_angles[r, c])
+                    d_idx = int((ang + 22.5) // 45) % 8
+                    cardinal = directions[d_idx]
+                    loc_slope = float(slope_percent[r, c])
+                    loc_elev = float(elevation_grid[r, c])
+                    mag = min(max(loc_slope / 15.0, 0.25), 1.0)
 
-                flow_vectors.append(FlowVector(
-                    lng=round(float(grid_lngs[r, c]), 6),
-                    lat=round(float(grid_lats[r, c]), 6),
-                    direction_deg=round(ang, 1),
-                    cardinal_direction=cardinal,
-                    slope_percent=round(loc_slope, 1),
-                    elevation=round(loc_elev, 2),
-                    magnitude=round(mag, 2)
-                ))
+                    vecs.append(FlowVector(
+                        lng=round(float(grid_lngs[r, c]), 6),
+                        lat=round(float(grid_lats[r, c]), 6),
+                        direction_deg=round(ang, 1),
+                        cardinal_direction=cardinal,
+                        slope_percent=round(loc_slope, 1),
+                        elevation=round(loc_elev, 2),
+                        magnitude=round(mag, 2)
+                    ))
+            return vecs
+
+        flow_vectors = sample_vectors(stride_r, stride_c)
+        if len(flow_vectors) < 12 and (rows >= 10 and cols >= 10):
+            flow_vectors = sample_vectors(max(1, rows // 8), max(1, cols // 8))
 
         # Area computations
         area_sqm = self.calculate_polygon_area_sqm(coordinates)

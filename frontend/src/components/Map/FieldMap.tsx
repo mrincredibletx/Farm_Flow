@@ -429,41 +429,49 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         });
       }
 
-      // Render waterlogging risk circles
+      const isDivide = !!analysisData.metrics?.is_watershed_divide;
+
+      // Render waterlogging risk circles with clean transparency
       zones.forEach(([lng, lat, severity]) => {
         const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
         const elevText = detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...';
 
         let fillColor = '#10B981';
         let strokeColor = '#059669';
+        let fillOp = overlayOpacity * 0.15;
+        let strokeOp = 0.0;
+        let strokeWt = 0;
 
-        if (severity >= 0.7) {
+        if (severity >= 0.70) {
           fillColor = '#F43F5E';
           strokeColor = '#BE123C';
-        } else if (severity >= 0.4) {
+          fillOp = overlayOpacity * 0.65;
+          strokeOp = overlayOpacity * 0.85;
+          strokeWt = 1.0;
+        } else if (severity >= 0.35) {
           fillColor = '#F59E0B';
           strokeColor = '#D97706';
-        } else if (severity >= 0.25) {
-          fillColor = '#06B6D4';
-          strokeColor = '#0891B2';
+          fillOp = overlayOpacity * 0.40;
+          strokeOp = overlayOpacity * 0.40;
+          strokeWt = 0.5;
         }
 
         const circle = L.circle([lat, lng], {
           radius: pointRadius,
-          stroke: true,
-          weight: 0.5,
+          stroke: strokeWt > 0,
+          weight: strokeWt,
           color: strokeColor,
-          opacity: overlayOpacity * 0.25,
+          opacity: strokeOp,
           fillColor: fillColor,
-          fillOpacity: overlayOpacity * 0.45,
+          fillOpacity: fillOp,
         });
 
         circle.bindPopup(`
           <div class="p-1 space-y-1.5 text-xs">
             <div class="font-bold flex items-center gap-1.5 ${
-              severity >= 0.7 ? 'text-rose-400' : severity >= 0.4 ? 'text-amber-400' : 'text-cyan-400'
+              severity >= 0.7 ? 'text-rose-400' : severity >= 0.35 ? 'text-amber-400' : 'text-emerald-400'
             }">
-              <span>${severity >= 0.7 ? 'Severe Risk' : severity >= 0.4 ? 'Moderate Risk' : 'Low Risk'}</span>
+              <span>${severity >= 0.7 ? 'Severe Ponding Sink' : severity >= 0.35 ? 'Moderate Risk (Sluggish)' : 'Low Risk (Good Runoff)'}</span>
             </div>
             <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
               <div>Elevation:</div>
@@ -476,7 +484,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         heatmapGroup.addLayer(circle);
       });
 
-      // Primary Sinks
+      // Primary Sinks (Pulsing Radar Pins on genuine drainage origin points)
       if (showSinkMarkers && analysisData.drainage_routes) {
         analysisData.drainage_routes.forEach((r, idx) => {
           const pingIcon = L.divIcon({
@@ -508,28 +516,38 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             opacity: 0.95,
             dashArray: '8, 8',
           });
-          ditchLine.bindTooltip(`💧 Ditch #${idx + 1} (${route.length_meters.toFixed(0)}m)`, {
+          ditchLine.bindTooltip(`💧 Ditch #${idx + 1} (${route.length_meters.toFixed(0)}m, ${route.slope_percent.toFixed(1)}% slope)`, {
             permanent: true,
             direction: 'center',
             className: 'ditch-label-tooltip',
           });
           routesGroup.addLayer(ditchLine);
 
-          // Outlet marker
+          // Distinct Outlet Marker with Number Badge
           const outletIcon = L.divIcon({
             className: 'ditch-outlet-pin',
-            html: `<div style="background:#10B981;width:16px;height:16px;border:2px solid #fff;border-radius:4px;box-shadow:0 0 12px #10B981;"></div>`,
-            iconSize: [16, 16],
-            iconAnchor: [8, 8],
+            html: `
+              <div style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="background:#10B981; width:22px; height:22px; border:2px solid #fff; border-radius:6px; box-shadow:0 0 14px #10B981; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:800;">
+                  ${idx + 1}
+                </div>
+                <div style="margin-top: 3px; white-space: nowrap; background: rgba(15,23,42,0.95); border: 1px solid #10B981; color: #6EE7B7; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 9999px; box-shadow: 0 2px 8px rgba(0,0,0,0.6);">
+                  Outlet #${idx + 1}
+                </div>
+              </div>
+            `,
+            iconSize: [60, 44],
+            iconAnchor: [30, 11],
           });
           const outletMarker = L.marker([route.outlet_point[1], route.outlet_point[0]], {
             icon: outletIcon,
           });
+          outletMarker.bindTooltip(`🟢 Outlet #${idx + 1}: Discharge Point`, { direction: 'top' });
           routesGroup.addLayer(outletMarker);
         });
       }
 
-      // Downhill Flow Vectors
+      // Downhill Gravity Flow Vectors
       if (analysisData.flow_vectors && analysisData.bounding_box) {
         const bbox = analysisData.bounding_box;
         const spanLng = bbox.max_lng - bbox.min_lng;
@@ -545,15 +563,25 @@ export const FieldMap: React.FC<FieldMapProps> = ({
           const endLat = vec.lat + dy * 0.55;
           const endLng = vec.lng + dx * 0.55;
 
+          // Color dual flanks distinctly if mountain ridge divide is present
+          let arrowColor = '#00F0FF';
+          if (isDivide) {
+            if (vec.direction_deg >= 180 && vec.direction_deg < 360) {
+              arrowColor = '#00F0FF'; // Cyan: Westward slope
+            } else {
+              arrowColor = '#F59E0B'; // Amber: Eastward slope
+            }
+          }
+
           const arrowShaft = L.polyline(
             [
               [startLat, startLng],
               [endLat, endLng],
             ],
             {
-              color: '#00F0FF',
+              color: arrowColor,
               weight: 2.2,
-              opacity: 0.85,
+              opacity: 0.90,
               dashArray: '3, 3',
             }
           );
@@ -561,7 +589,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
           const arrowHeadIcon = L.divIcon({
             className: 'flow-arrow-marker',
             html: `
-              <div style="transform: rotate(${vec.direction_deg - 90}deg); color: #00F0FF; font-size: 16px; font-weight: 900; filter: drop-shadow(0 0 6px rgba(0,240,255,0.9)); line-height: 1;">
+              <div style="transform: rotate(${vec.direction_deg - 90}deg); color: ${arrowColor}; font-size: 16px; font-weight: 900; filter: drop-shadow(0 0 6px ${arrowColor}); line-height: 1; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; transform-origin: center center;">
                 ➔
               </div>
             `,
@@ -569,6 +597,10 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             iconAnchor: [8, 8],
           });
           const headMarker = L.marker([endLat, endLng], { icon: arrowHeadIcon });
+          headMarker.bindTooltip(
+            `Downhill Runoff: ${vec.cardinal_direction} (${vec.slope_percent.toFixed(1)}% slope)`,
+            { direction: 'top', className: 'ditch-label-tooltip' }
+          );
 
           flowArrowsGroup.addLayer(arrowShaft);
           flowArrowsGroup.addLayer(headMarker);
@@ -715,6 +747,58 @@ export const FieldMap: React.FC<FieldMapProps> = ({
           <span>{isDrawingProfile ? 'Click 2 Points...' : 'Cross-Section Profile'}</span>
         </button>
       </div>
+
+      {/* Watershed Divide Notice Banner (When Polygon Spans A Mountain Ridge) */}
+      {analysisData?.metrics?.is_watershed_divide && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 px-4 py-1.5 glass-panel-elevated rounded-full border border-cyan-400/50 shadow-2xl text-xs font-semibold text-cyan-300 flex items-center gap-2 backdrop-blur-md max-w-lg text-center animate-in fade-in duration-300">
+          <Compass className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span>
+            Mountain Ridge Divide: Water naturally bifurcates into{' '}
+            <strong className="text-cyan-200">{analysisData.metrics.major_flow_directions?.[0]}</strong> &amp;{' '}
+            <strong className="text-amber-300">{analysisData.metrics.major_flow_directions?.[1]}</strong>
+          </span>
+        </div>
+      )}
+
+      {/* On-Map Hydrological Visual Guide Card (Explains what each line, arrow & circle means) */}
+      {analysisData && mapMode === 'drainage' && (
+        <div className="absolute bottom-6 left-4 z-20 glass-panel-elevated p-3 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-md text-xs space-y-2 max-w-[270px] hidden md:block animate-in fade-in duration-300">
+          <div className="font-bold text-white flex items-center justify-between pb-1 border-b border-white/10">
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Map Legend &amp; Flow Guide</span>
+            </span>
+            <span className="text-[10px] text-cyan-300 font-mono">Telemetry</span>
+          </div>
+
+          <div className="space-y-1.5 text-[11px] text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className="text-cyan-400 font-bold text-sm leading-none shrink-0">➔</span>
+              <span><strong>Runoff Flow Arrows:</strong> Natural downhill gravity descent</span>
+            </div>
+            {analysisData.metrics?.is_watershed_divide && (
+              <div className="flex items-center gap-2 pl-4 text-[10.5px] text-amber-300">
+                <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0"></span>
+                <span>Dual Flanks: Cyan (West) &amp; Amber (East)</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-rose-500 border border-white shrink-0"></span>
+              <span><strong>🔴 Critical Sink:</strong> Lowest trapped depression basin</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-0.5 border-t-2 border-dashed border-cyan-400 shrink-0"></span>
+              <span><strong>💧 Ditch Trench:</strong> Engineered A* drainage route</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3.5 h-3.5 rounded-md bg-emerald-500 border border-white shrink-0 flex items-center justify-center text-[9px] font-bold text-white">
+                1
+              </span>
+              <span><strong>🟢 Outlet:</strong> Field perimeter discharge escape</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Right Quick Stats HUD Card - CutSheetRx Style */}
       {analysisData && (

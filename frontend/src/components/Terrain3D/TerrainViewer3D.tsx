@@ -440,6 +440,16 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({
         </div>
       </div>
 
+      {/* Watershed Divide Notice in 3D */}
+      {analysisData?.metrics?.is_watershed_divide && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 px-4 py-1.5 glass-panel-elevated rounded-full border border-cyan-400/50 shadow-2xl text-xs font-semibold text-cyan-300 flex items-center gap-2 backdrop-blur-md">
+          <Compass className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
+          <span>
+            Mountain Ridge: Dual Outflow ({analysisData.metrics.major_flow_directions?.join(' & ')})
+          </span>
+        </div>
+      )}
+
       {/* Top Right Live Simulation Telemetry HUD (CutSheetRx Frame 4 & 5) */}
       <div className="absolute top-4 right-4 z-20 glass-panel-elevated p-3.5 rounded-2xl border border-cyan-500/30 shadow-2xl backdrop-blur-md max-w-xs space-y-1.5 text-xs">
         <div className="flex items-center justify-between pb-1.5 border-b border-white/10">

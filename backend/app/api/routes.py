@@ -169,7 +169,8 @@ async def analyze_terrain(payload: TerrainRequest):
                 elevation_grid=elevation_grid,
                 mask=mask,
                 waterlogging_zones=waterlogging_zones,
-                bbox=bbox
+                bbox=bbox,
+                metrics=metrics
             )
 
             # 2. Soil & Precipitation ML Risk Simulation (using live weather rainfall or custom scenario)

@@ -74,9 +74,20 @@ export const TerrainMetricsCard: React.FC<TerrainMetricsCardProps> = ({ metrics 
             <Compass className="w-3 h-3 text-cyan-400" />
             <span>Runoff Flow</span>
           </div>
-          <div className="font-mono font-bold text-cyan-300 text-sm truncate" title={metrics.dominant_slope_direction}>
-            {metrics.dominant_slope_direction}
-          </div>
+          {metrics.is_watershed_divide && metrics.major_flow_directions && metrics.major_flow_directions.length >= 2 ? (
+            <div className="space-y-0.5">
+              <div className="font-mono font-bold text-cyan-300 text-xs truncate" title={metrics.major_flow_directions[0]}>
+                🏔️ {metrics.major_flow_directions[0]}
+              </div>
+              <div className="font-mono font-bold text-amber-300 text-xs truncate" title={metrics.major_flow_directions[1]}>
+                🏔️ {metrics.major_flow_directions[1]}
+              </div>
+            </div>
+          ) : (
+            <div className="font-mono font-bold text-cyan-300 text-sm truncate" title={metrics.dominant_slope_direction}>
+              {metrics.dominant_slope_direction}
+            </div>
+          )}
           <div className="text-[10px] text-slate-400 font-mono">
             Avg Grade: {metrics.average_slope_percent.toFixed(2)}%
           </div>

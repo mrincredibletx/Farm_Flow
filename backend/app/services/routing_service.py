@@ -14,12 +14,15 @@ class DrainageRoutingService:
         elevation_grid: np.ndarray,
         mask: np.ndarray,
         waterlogging_zones: List[List[float]],
-        bbox: Dict[str, float]
+        bbox: Dict[str, float],
+        metrics: Optional[Any] = None
     ) -> List[Dict[str, Any]]:
         """
         Calculates optimal gravitational surface drainage ditch routes using A* pathfinding.
         Finds the least-resistance path from every severe sink (local minimum) to the
         optimal natural escape point along the field boundary.
+        Supports multi-catchment routing across watershed divides (mountain ridges),
+        ensuring both opposing flanks receive dedicated drainage routes to their respective outlets.
         """
         rows, cols = elevation_grid.shape
         routes: List[Dict[str, Any]] = []
@@ -49,42 +52,122 @@ class DrainageRoutingService:
                 boundary_cells.append((0, c, float(elevation_grid[0, c])))
                 boundary_cells.append((rows - 1, c, float(elevation_grid[rows - 1, c])))
 
-        # Find severe sinks (severity >= 0.70)
-        severe_sinks = [z for z in waterlogging_zones if z[2] >= 0.70]
-        # If no severe sinks, take the top 2 lowest elevation cells
-        if not severe_sinks and len(waterlogging_zones) > 0:
-            sorted_zones = sorted(waterlogging_zones, key=lambda x: -x[2])
-            severe_sinks = sorted_zones[:2]
-
-        # Limit to top 3 critical sinks to keep drainage channel network clean and practical
-        top_sinks = sorted(severe_sinks, key=lambda x: -x[2])[:3]
-
-        # Resolution spatial distances in meters
+        # Spatial resolution in meters
         mean_lat = float(np.mean(grid_lats))
         lat_rad = math.radians(mean_lat)
         dy_m = abs(float(grid_lats[0, 0] - grid_lats[-1, 0])) / max(rows - 1, 1) * 111320.0
         dx_m = abs(float(grid_lngs[0, -1] - grid_lngs[0, 0])) / max(cols - 1, 1) * (111320.0 * math.cos(lat_rad))
 
-        for idx, sink in enumerate(top_sinks):
-            sink_lng, sink_lat, severity = sink[0], sink[1], sink[2]
+        c_lat = (bbox["min_lat"] + bbox["max_lat"]) / 2.0
+        c_lng = (bbox["min_lng"] + bbox["max_lng"]) / 2.0
 
-            # Find nearest grid cell for sink
-            dist_sq = (grid_lngs - sink_lng)**2 + (grid_lats - sink_lat)**2
-            start_r, start_c = np.unravel_index(np.argmin(dist_sq), dist_sq.shape)
+        is_divide = bool(metrics and getattr(metrics, 'is_watershed_divide', False))
+        divide_type = str(getattr(metrics, 'watershed_divide_type', '')) if is_divide else ''
 
-            # Filter boundary outlets that are distinct from sink (at least 2 grid units away)
-            valid_targets = [b for b in boundary_cells if math.hypot(b[0] - start_r, b[1] - start_c) >= 2.0]
-            if not valid_targets:
-                valid_targets = [b for b in boundary_cells if (b[0], b[1]) != (start_r, start_c)]
-            if not valid_targets:
-                valid_targets = boundary_cells
+        # Map each waterlogging zone point to (r, c)
+        zone_points_with_rc = []
+        for z in waterlogging_zones:
+            lng, lat, sev = z[0], z[1], z[2]
+            dist_sq = (grid_lngs - lng)**2 + (grid_lats - lat)**2
+            zr, zc = np.unravel_index(np.argmin(dist_sq), dist_sq.shape)
+            zone_points_with_rc.append({
+                "lng": lng,
+                "lat": lat,
+                "severity": sev,
+                "r": zr,
+                "c": zc,
+                "elev": float(elevation_grid[zr, zc])
+            })
 
-            # Pick target outlet: lowest elevation boundary point with shortest downhill cut
-            best_target = min(
-                valid_targets,
-                key=lambda b: b[2] + 0.2 * math.hypot((b[0] - start_r) * dy_m, (b[1] - start_c) * dx_m) / 100.0
-            )
-            target_r, target_c = best_target[0], best_target[1]
+        # Selection of sink-outlet pairs based on watershed structure
+        sink_outlet_pairs: List[Tuple[Dict[str, Any], Tuple[int, int]]] = []
+        used_outlets: List[Tuple[int, int]] = []
+
+        def find_best_outlet(start_r: int, start_c: int, candidates: List[Tuple[int, int, float]]) -> Tuple[int, int]:
+            # Filter candidates that are not right on top of start cell
+            valid = [b for b in candidates if math.hypot(b[0] - start_r, b[1] - start_c) >= 2.0]
+            if not valid:
+                valid = candidates
+
+            # Exclude or heavily penalize outlets too close to already used outlets (< 3 cells away)
+            def outlet_cost(b):
+                elev_cost = b[2]
+                dist_m = math.hypot((b[0] - start_r) * dy_m, (b[1] - start_c) * dx_m)
+                penalty = 0.0
+                for ur, uc in used_outlets:
+                    if math.hypot(b[0] - ur, b[1] - uc) < 3.0:
+                        penalty += 50.0  # Encourage distinct, separate outlets
+                return elev_cost + 0.15 * (dist_m / 100.0) + penalty
+
+            best = min(valid, key=outlet_cost)
+            return (best[0], best[1])
+
+        if is_divide:
+            # Dual-catchment routing across the mountain ridge
+            is_ns_divide = "North-South" in divide_type
+            if is_ns_divide:
+                flank_a_sinks = [z for z in zone_points_with_rc if z["lat"] >= c_lat]
+                flank_b_sinks = [z for z in zone_points_with_rc if z["lat"] < c_lat]
+                flank_a_boundary = [b for b in boundary_cells if grid_lats[b[0], b[1]] >= c_lat]
+                flank_b_boundary = [b for b in boundary_cells if grid_lats[b[0], b[1]] < c_lat]
+            else:
+                flank_a_sinks = [z for z in zone_points_with_rc if z["lng"] < c_lng]
+                flank_b_sinks = [z for z in zone_points_with_rc if z["lng"] >= c_lng]
+                flank_a_boundary = [b for b in boundary_cells if grid_lngs[b[0], b[1]] < c_lng]
+                flank_b_boundary = [b for b in boundary_cells if grid_lngs[b[0], b[1]] >= c_lng]
+
+            if not flank_a_boundary: flank_a_boundary = boundary_cells
+            if not flank_b_boundary: flank_b_boundary = boundary_cells
+
+            # Select top sink on Flank A
+            if flank_a_sinks:
+                sink_a = max(flank_a_sinks, key=lambda z: (z["severity"], -z["elev"]))
+                out_a = find_best_outlet(sink_a["r"], sink_a["c"], flank_a_boundary)
+                used_outlets.append(out_a)
+                sink_outlet_pairs.append((sink_a, out_a))
+
+            # Select top sink on Flank B
+            if flank_b_sinks:
+                sink_b = max(flank_b_sinks, key=lambda z: (z["severity"], -z["elev"]))
+                out_b = find_best_outlet(sink_b["r"], sink_b["c"], flank_b_boundary)
+                used_outlets.append(out_b)
+                sink_outlet_pairs.append((sink_b, out_b))
+
+            # Optional 3rd route if a secondary severe sink exists on either flank
+            remaining_sinks = [
+                z for z in zone_points_with_rc
+                if all(math.hypot(z["r"] - pair[0]["r"], z["c"] - pair[0]["c"]) >= 3.0 for pair in sink_outlet_pairs)
+            ]
+            if remaining_sinks:
+                sink_c_candidate = max(remaining_sinks, key=lambda z: (z["severity"], -z["elev"]))
+                if sink_c_candidate["severity"] >= 0.50:
+                    cand_flank_bounds = flank_a_boundary if sink_c_candidate["lng"] < c_lng else flank_b_boundary
+                    out_c = find_best_outlet(sink_c_candidate["r"], sink_c_candidate["c"], cand_flank_bounds)
+                    used_outlets.append(out_c)
+                    sink_outlet_pairs.append((sink_c_candidate, out_c))
+        else:
+            # Single uniform catchment: select top 2-3 spatially separated sinks
+            sorted_sinks = sorted(zone_points_with_rc, key=lambda z: (-z["severity"], z["elev"]))
+            selected_sinks = []
+            for s in sorted_sinks:
+                if len(selected_sinks) >= 3:
+                    break
+                if all(math.hypot(s["r"] - prev["r"], s["c"] - prev["c"]) >= 3.0 for prev in selected_sinks):
+                    selected_sinks.append(s)
+
+            if not selected_sinks and zone_points_with_rc:
+                selected_sinks = [sorted_sinks[0]]
+
+            for s in selected_sinks:
+                out = find_best_outlet(s["r"], s["c"], boundary_cells)
+                used_outlets.append(out)
+                sink_outlet_pairs.append((s, out))
+
+        for idx, (sink_info, target_cell) in enumerate(sink_outlet_pairs):
+            start_r, start_c = sink_info["r"], sink_info["c"]
+            sink_lng, sink_lat = sink_info["lng"], sink_info["lat"]
+            severity = sink_info["severity"]
+            target_r, target_c = target_cell[0], target_cell[1]
 
             # Run A* Pathfinding
             path_cells = self._astar_search(
@@ -97,10 +180,8 @@ class DrainageRoutingService:
             )
 
             if len(path_cells) < 2:
-                # Direct straight fallback
                 path_cells = [(start_r, start_c), (target_r, target_c)]
 
-            # Convert path cells to geo coordinates and compute ditch engineering metrics
             path_coords = []
             path_elevs = []
             total_length = 0.0
@@ -122,13 +203,10 @@ class DrainageRoutingService:
             elev_drop = max(0.0, start_z - end_z)
             avg_slope = (elev_drop / max(total_length, 1.0)) * 100.0
 
-            # Earthwork volume calculation (Trapezoidal agricultural ditch: bottom 0.5m, side 1:1, avg depth 0.6m)
             avg_cut_depth = 0.65  # meters
             ditch_bottom_width = 0.5  # meters
-            cross_section_area = (ditch_bottom_width + avg_cut_depth) * avg_cut_depth  # ~0.75 m2
+            cross_section_area = (ditch_bottom_width + avg_cut_depth) * avg_cut_depth
             excavation_m3 = round(cross_section_area * total_length, 1)
-
-            # Estimated manual/mini-excavator earthwork cost in INR (~₹180 per m3 in India)
             estimated_cost_inr = round(excavation_m3 * 180.0)
 
             routes.append({
