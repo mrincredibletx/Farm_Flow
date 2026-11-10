@@ -7,8 +7,9 @@ import { Sidebar } from '@/components/Dashboard/Sidebar';
 import { SearchBar } from '@/components/Map/SearchBar';
 import { MapLegend } from '@/components/Map/MapLegend';
 import { ElevationGridInspector } from '@/components/Dashboard/ElevationGridInspector';
+import { ElevationProfileDrawer } from '@/components/Map/ElevationProfileDrawer';
 import { analyzeTerrain, fetchSampleFields } from '@/lib/api';
-import { TerrainAnalysisResponse, SampleField } from '@/lib/types';
+import { TerrainAnalysisResponse, SampleField, ElevationProfilePoint } from '@/lib/types';
 import { generateAgronomicPDFReport } from '@/lib/pdfExport';
 import { AlertCircle, X, Box, Map as MapIcon, Loader2 } from 'lucide-react';
 
@@ -56,6 +57,11 @@ export default function Home() {
   const [showSinkMarkers, setShowSinkMarkers] = useState(true);
   const [isGridInspectorOpen, setIsGridInspectorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Precision Land Grading & Elevation Transect States (CutSheetRx Style)
+  const [mapMode, setMapMode] = useState<'drainage' | 'grading'>('drainage');
+  const [profilePoints, setProfilePoints] = useState<ElevationProfilePoint[]>([]);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Load sample fields and initialize with UEM Jaipur demo field
   useEffect(() => {
@@ -150,6 +156,28 @@ export default function Home() {
           sampleFields={sampleFields}
           onSelectSampleField={handleSelectSampleField}
           onOpenGridInspector={() => setIsGridInspectorOpen(true)}
+          onOpenElevationProfile={() => {
+            if (profilePoints.length > 0) {
+              setIsProfileOpen(true);
+            } else if (analysisData?.bounding_box && analysisData?.elevation_grid) {
+              // Generate automatic diagonal cross-section transect across the field
+              const bbox = analysisData.bounding_box;
+              const ptA: [number, number] = [bbox.min_lng, bbox.max_lat];
+              const ptB: [number, number] = [bbox.max_lng, bbox.min_lat];
+              import('@/lib/api').then(({ fetchElevationProfile }) => {
+                fetchElevationProfile(
+                  analysisData.elevation_grid,
+                  bbox,
+                  ptA,
+                  ptB,
+                  analysisData.cut_fill_analysis?.design_elevation_grid
+                ).then((pts) => {
+                  setProfilePoints(pts);
+                  setIsProfileOpen(true);
+                });
+              });
+            }
+          }}
         />
 
         {/* Center / Right Visual Area: 2D GIS Map or 3D Terrain Mesh */}
@@ -189,7 +217,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 2D Interactive Leaflet Map */}
+              {/* 2D Interactive Leaflet Map with Cut/Fill & Numbered Vertices */}
               <FieldMap
                 coordinates={coordinates}
                 onCoordinatesChange={(newCoords) => {
@@ -202,14 +230,34 @@ export default function Home() {
                 overlayOpacity={overlayOpacity}
                 showSinkMarkers={showSinkMarkers}
                 selectedLocation={selectedLocation}
+                mapMode={mapMode}
+                onToggleMapMode={setMapMode}
+                onProfileGenerated={(pts) => {
+                  setProfilePoints(pts);
+                  setIsProfileOpen(true);
+                }}
               />
             </>
           ) : (
-            /* 3D Three.js Interactive Terrain Mesh Viewer */
-            <TerrainViewer3D analysisData={analysisData} />
+            /* 3D Three.js Interactive Terrain Mesh Viewer with Rain Simulation */
+            <TerrainViewer3D
+              analysisData={analysisData}
+              onBackToMap={() => setViewMode('2D')}
+            />
           )}
         </div>
       </div>
+
+      {/* Interactive Elevation Profile Cross-Section Drawer */}
+      <ElevationProfileDrawer
+        points={profilePoints}
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        onClear={() => {
+          setProfilePoints([]);
+          setIsProfileOpen(false);
+        }}
+      />
 
       {/* Raw 2D Elevation NumPy Grid Matrix Inspector Modal */}
       {analysisData && (

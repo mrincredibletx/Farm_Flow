@@ -1,4 +1,10 @@
-import { TerrainAnalysisResponse, SampleField, SearchResult } from './types';
+import {
+  TerrainAnalysisResponse,
+  SampleField,
+  SearchResult,
+  BoundingBox,
+  ElevationProfilePoint,
+} from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/v1', '') || 
   process.env.NEXT_PUBLIC_API_URL || 

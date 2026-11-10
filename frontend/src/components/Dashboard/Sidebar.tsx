@@ -329,6 +329,104 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
+        {/* TAB 2.5: CUT / FILL LAND GRADING (CutSheetRx Precision Leveling) */}
+        {activeTab === 'grading' && analysisData?.cut_fill_analysis && (
+          <div className="space-y-3 animate-fade-in text-xs">
+            <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <Scissors className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Precision Land Leveling</span>
+                </span>
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                  Cut:Fill 1.20 Target
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Calculates the best-fit planar grading slope to balance soil cut and fill volumes for uniform gravity runoff.
+              </p>
+            </div>
+
+            {/* Big Cut & Fill Cards */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-1">
+                <div className="text-slate-400 text-[10px] flex items-center gap-1">
+                  <Scissors className="w-3 h-3 text-rose-400" />
+                  <span>TOTAL CUT</span>
+                </div>
+                <div className="font-mono font-black text-rose-400 text-base">
+                  {analysisData.cut_fill_analysis.total_cut_m3.toLocaleString()} m³
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  {analysisData.cut_fill_analysis.cut_per_acre_m3} m³/ac
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-950/30 border border-blue-500/30 space-y-1">
+                <div className="text-slate-400 text-[10px] flex items-center gap-1">
+                  <Shovel className="w-3 h-3 text-blue-400" />
+                  <span>TOTAL FILL</span>
+                </div>
+                <div className="font-mono font-black text-blue-400 text-base">
+                  {analysisData.cut_fill_analysis.total_fill_m3.toLocaleString()} m³
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Ratio: {analysisData.cut_fill_analysis.cut_fill_ratio}
+                </div>
+              </div>
+            </div>
+
+            {/* Design Planar Slope Specs */}
+            <div className="p-3 rounded-xl bg-slate-900/70 border border-white/10 space-y-2 text-[11px]">
+              <span className="font-semibold text-slate-200">Grading Specifications</span>
+              <div className="grid grid-cols-2 gap-1.5 text-slate-300">
+                <div className="p-2 rounded bg-slate-950/50 border border-white/5">
+                  <div className="text-slate-400 text-[10px]">Design Slope:</div>
+                  <div className="font-mono font-bold text-cyan-300">
+                    {analysisData.cut_fill_analysis.design_slope_percent}% Grade
+                  </div>
+                </div>
+                <div className="p-2 rounded bg-slate-950/50 border border-white/5">
+                  <div className="text-slate-400 text-[10px]">Fall Azimuth:</div>
+                  <div className="font-mono font-bold text-slate-100">
+                    {analysisData.cut_fill_analysis.heading_compass} ({analysisData.cut_fill_analysis.design_heading_degrees}°)
+                  </div>
+                </div>
+                <div className="p-2 rounded bg-slate-950/50 border border-white/5">
+                  <div className="text-slate-400 text-[10px]">Max Cut Depth:</div>
+                  <div className="font-mono font-bold text-rose-400">
+                    +{analysisData.cut_fill_analysis.max_cut_depth_m} m
+                  </div>
+                </div>
+                <div className="p-2 rounded bg-slate-950/50 border border-white/5">
+                  <div className="text-slate-400 text-[10px]">Max Fill Depth:</div>
+                  <div className="font-mono font-bold text-blue-400">
+                    -{analysisData.cut_fill_analysis.max_fill_depth_m} m
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded bg-emerald-950/30 border border-emerald-500/20 flex justify-between items-center text-xs">
+                <span className="text-slate-300">Est. Leveling Cost:</span>
+                <span className="font-mono font-bold text-emerald-400">
+                  ₹{analysisData.cut_fill_analysis.estimated_leveling_cost_inr.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Transect Trigger Button */}
+            {onOpenElevationProfile && (
+              <button
+                onClick={onOpenElevationProfile}
+                className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold glass-panel hover:bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 flex items-center justify-center gap-2 transition-all shadow-md"
+              >
+                <TrendingDown className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Inspect Elevation Profile Transect</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* TAB 3: SOIL & RAINFALL ML SIMULATOR (Phase II) */}
         {activeTab === 'simulator' && (
           <div className="space-y-3 animate-fade-in text-xs">
