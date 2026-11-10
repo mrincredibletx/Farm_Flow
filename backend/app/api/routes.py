@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import numpy as np
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -16,6 +16,7 @@ from app.services.routing_service import DrainageRoutingService
 from app.services.risk_ml_service import HydrologicalRiskService
 from app.services.advisory_service import AIAdvisoryService
 from app.services.weather_service import WeatherService
+from app.services.cut_fill_service import CutFillService
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ routing_service = DrainageRoutingService()
 risk_service = HydrologicalRiskService()
 advisory_service = AIAdvisoryService()
 weather_service = WeatherService()
+cut_fill_service = CutFillService()
 
 class RiskScenarioPayload(BaseModel):
     soil_type: str = Field(default="clay")
@@ -189,6 +191,13 @@ async def analyze_terrain(payload: TerrainRequest):
                 routes=drainage_routes
             )
 
+        # 4. Precision Land Grading & Cut/Fill Optimization
+        cut_fill_analysis = cut_fill_service.calculate_cut_fill(
+            elevation_grid=elevation_grid_list,
+            bbox=bbox,
+            target_cut_fill_ratio=1.20
+        )
+
         return TerrainResponse(
             status="success",
             bounding_box=bbox,
@@ -202,7 +211,8 @@ async def analyze_terrain(payload: TerrainRequest):
             drainage_routes=drainage_routes,
             risk_simulation=risk_simulation,
             ai_advisory=ai_advisory,
-            live_weather=live_weather
+            live_weather=live_weather,
+            cut_fill_analysis=cut_fill_analysis
         )
 
     except ValueError as ve:
@@ -243,3 +253,25 @@ async def get_weather(lat: float, lng: float):
     Returns real-time rainfall, temperature, and wind speed from OpenWeatherMap or Tomorrow.io.
     """
     return await weather_service.fetch_current_rainfall(lat, lng)
+
+class ElevationProfilePayload(BaseModel):
+    elevation_grid: List[List[float]]
+    design_grid: Optional[List[List[float]]] = None
+    bbox: Dict[str, float]
+    start_pt: List[float] # [lng, lat]
+    end_pt: List[float]   # [lng, lat]
+    samples: int = Field(default=40, ge=10, le=100)
+
+@router.post("/elevation-profile", status_code=status.HTTP_200_OK, summary="Compute elevation transect cross-section")
+async def get_elevation_profile(payload: ElevationProfilePayload):
+    """
+    Samples ground elevation and design grade along a 2-point transect line across the field.
+    """
+    return cut_fill_service.sample_elevation_profile(
+        elevation_grid=payload.elevation_grid,
+        design_grid=payload.design_grid,
+        bbox=payload.bbox,
+        start_pt=(payload.start_pt[0], payload.start_pt[1]),
+        end_pt=(payload.end_pt[0], payload.end_pt[1]),
+        num_samples=payload.samples
+    )

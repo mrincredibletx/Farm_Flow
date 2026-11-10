@@ -1,8 +1,19 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { TerrainAnalysisResponse } from '@/lib/types';
-import { Layers, RotateCcw, Check, Sparkles, Navigation } from 'lucide-react';
+import { TerrainAnalysisResponse, ElevationProfilePoint } from '@/lib/types';
+import { fetchElevationProfile } from '@/lib/api';
+import {
+  Layers,
+  RotateCcw,
+  Check,
+  Sparkles,
+  Navigation,
+  TrendingDown,
+  Scissors,
+  Shovel,
+  Compass,
+} from 'lucide-react';
 
 interface FieldMapProps {
   coordinates: [number, number][];
@@ -13,6 +24,9 @@ interface FieldMapProps {
   overlayOpacity: number;
   showSinkMarkers: boolean;
   selectedLocation: { lat: number; lng: number } | null;
+  mapMode: 'drainage' | 'grading';
+  onToggleMapMode: (mode: 'drainage' | 'grading') => void;
+  onProfileGenerated: (points: ElevationProfilePoint[]) => void;
 }
 
 export const FieldMap: React.FC<FieldMapProps> = ({
@@ -24,6 +38,9 @@ export const FieldMap: React.FC<FieldMapProps> = ({
   overlayOpacity,
   showSinkMarkers,
   selectedLocation,
+  mapMode,
+  onToggleMapMode,
+  onProfileGenerated,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -32,21 +49,34 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     polygonLayer: any;
     vertexMarkers: any[];
     heatmapLayer: any;
+    gradingLayer: any;
     sinkMarkersLayer: any;
     drainageRoutesLayer: any;
     flowArrowsLayer: any;
+    profileLineLayer: any;
   }>({
     tileLayer: null,
     polygonLayer: null,
     vertexMarkers: [],
     heatmapLayer: null,
+    gradingLayer: null,
     sinkMarkersLayer: null,
     drainageRoutesLayer: null,
     flowArrowsLayer: null,
+    profileLineLayer: null,
   });
 
-  const [activeBaseMap, setActiveBaseMap] = useState<'dark' | 'satellite' | 'osm'>('dark');
+  const [activeBaseMap, setActiveBaseMap] = useState<'dark' | 'satellite' | 'osm'>('satellite');
   const [L, setL] = useState<any>(null);
+  const [mouseElevation, setMouseElevation] = useState<{
+    elev: number;
+    lat: number;
+    lng: number;
+  } | null>(null);
+
+  // Profile line drawing state
+  const [isDrawingProfile, setIsDrawingProfile] = useState(false);
+  const profilePointsRef = useRef<[number, number][]>([]);
 
   // Dynamically load Leaflet on client mount
   useEffect(() => {
@@ -59,7 +89,6 @@ export const FieldMap: React.FC<FieldMapProps> = ({
   useEffect(() => {
     if (!L || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    // Default to Jaipur / UEM Jaipur area
     const initialLat = 26.9832;
     const initialLng = 75.9255;
     const initialZoom = 16;
@@ -73,21 +102,68 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     // Custom Zoom control at bottom right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // Initial Dark Tile layer (CartoDB Dark Matter)
-    const darkTiles = L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    // Initial Satellite Tile layer (Esri World Imagery)
+    const satTiles = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
-        attribution: '&copy; CartoDB &copy; OpenStreetMap',
-        maxZoom: 20,
-        subdomains: 'abcd',
+        attribution: '&copy; Esri World Imagery',
+        maxZoom: 19,
       }
     ).addTo(map);
 
-    layersRef.current.tileLayer = darkTiles;
+    layersRef.current.tileLayer = satTiles;
     layersRef.current.heatmapLayer = L.layerGroup().addTo(map);
+    layersRef.current.gradingLayer = L.layerGroup().addTo(map);
     layersRef.current.sinkMarkersLayer = L.layerGroup().addTo(map);
     layersRef.current.drainageRoutesLayer = L.layerGroup().addTo(map);
     layersRef.current.flowArrowsLayer = L.layerGroup().addTo(map);
+    layersRef.current.profileLineLayer = L.layerGroup().addTo(map);
+
+    // Mouse Move listener for real-time elevation & GPS HUD
+    map.on('mousemove', (e: any) => {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+
+      if (!analysisData || !analysisData.elevation_grid || !analysisData.bounding_box) {
+        setMouseElevation({ elev: 0, lat, lng });
+        return;
+      }
+
+      const bbox = analysisData.bounding_box;
+      const grid = analysisData.elevation_grid;
+      const rows = grid.length;
+      const cols = grid[0].length;
+
+      if (
+        lng >= bbox.min_lng &&
+        lng <= bbox.max_lng &&
+        lat >= bbox.min_lat &&
+        lat <= bbox.max_lat
+      ) {
+        const col_f =
+          ((lng - bbox.min_lng) / (bbox.max_lng - bbox.min_lng || 1)) * (cols - 1);
+        const row_f =
+          ((bbox.max_lat - lat) / (bbox.max_lat - bbox.min_lat || 1)) * (rows - 1);
+
+        const r0 = Math.max(0, Math.min(rows - 1, Math.floor(row_f)));
+        const r1 = Math.min(rows - 1, r0 + 1);
+        const c0 = Math.max(0, Math.min(cols - 1, Math.floor(col_f)));
+        const c1 = Math.min(cols - 1, c0 + 1);
+
+        const dr = row_f - r0;
+        const dc = col_f - c0;
+
+        const elev =
+          grid[r0][c0] * (1 - dc) * (1 - dr) +
+          grid[r0][c1] * dc * (1 - dr) +
+          grid[r1][c0] * (1 - dc) * dr +
+          grid[r1][c1] * dc * dr;
+
+        setMouseElevation({ elev: Math.round(elev * 100) / 100, lat, lng });
+      } else {
+        setMouseElevation({ elev: 0, lat, lng });
+      }
+    });
 
     mapInstanceRef.current = map;
 
@@ -143,29 +219,90 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     });
   }, [selectedLocation]);
 
-  // Map Click Handler for Drawing Mode
+  // Map Click Handler for Field Drawing & Profile Transect
   useEffect(() => {
     if (!L || !mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
-    const handleMapClick = (e: any) => {
-      if (!isDrawing) return;
-
-      const newPoint: [number, number] = [
+    const handleMapClick = async (e: any) => {
+      const clickPt: [number, number] = [
         parseFloat(e.latlng.lng.toFixed(6)),
         parseFloat(e.latlng.lat.toFixed(6)),
       ];
 
-      onCoordinatesChange([...coordinates, newPoint]);
+      // If user is drawing an Elevation Profile Transect line
+      if (isDrawingProfile) {
+        profilePointsRef.current.push(clickPt);
+
+        if (profilePointsRef.current.length === 1) {
+          // Draw start marker A
+          layersRef.current.profileLineLayer.clearLayers();
+          const startIcon = L.divIcon({
+            className: 'profile-pin-a',
+            html: `<div style="background:#00F0FF;color:#000;font-weight:900;font-size:10px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px #00F0FF;border:2px solid #fff;">A</div>`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          });
+          L.marker([clickPt[1], clickPt[0]], { icon: startIcon }).addTo(
+            layersRef.current.profileLineLayer
+          );
+        } else if (profilePointsRef.current.length >= 2) {
+          // Draw end marker B and transect line
+          const [ptA, ptB] = profilePointsRef.current;
+
+          const endIcon = L.divIcon({
+            className: 'profile-pin-b',
+            html: `<div style="background:#10B981;color:#000;font-weight:900;font-size:10px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px #10B981;border:2px solid #fff;">B</div>`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          });
+          L.marker([ptB[1], ptB[0]], { icon: endIcon }).addTo(
+            layersRef.current.profileLineLayer
+          );
+
+          L.polyline(
+            [
+              [ptA[1], ptA[0]],
+              [ptB[1], ptB[0]],
+            ],
+            {
+              color: '#00F0FF',
+              weight: 3,
+              dashArray: '6, 6',
+            }
+          ).addTo(layersRef.current.profileLineLayer);
+
+          setIsDrawingProfile(false);
+          profilePointsRef.current = [];
+
+          // Compute & fetch cross-section profile
+          if (analysisData?.elevation_grid && analysisData.bounding_box) {
+            const profile = await fetchElevationProfile(
+              analysisData.elevation_grid,
+              analysisData.bounding_box,
+              ptA,
+              ptB,
+              analysisData.cut_fill_analysis?.design_elevation_grid
+            );
+            onProfileGenerated(profile);
+          }
+        }
+        return;
+      }
+
+      // If user is drawing field boundary
+      if (isDrawing) {
+        onCoordinatesChange([...coordinates, clickPt]);
+      }
     };
 
     map.on('click', handleMapClick);
     return () => {
       map.off('click', handleMapClick);
     };
-  }, [L, isDrawing, coordinates, onCoordinatesChange]);
+  }, [L, isDrawing, isDrawingProfile, coordinates, analysisData, onCoordinatesChange, onProfileGenerated]);
 
-  // Update Polygon Layer and Vertex Markers on coordinates change
+  // Update Polygon Layer and Numbered Vertex Markers
   useEffect(() => {
     if (!L || !mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
@@ -209,304 +346,163 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       layersRef.current.polygonLayer = polyline;
     }
 
-    // Add glowing vertex markers
-    if (isDrawing || coordinates.length < 3) {
-      coordinates.forEach((pt, idx) => {
-        const markerIcon = L.divIcon({
-          className: 'custom-vertex-icon',
-          html: `<div class="draw-vertex-marker" title="Point ${idx + 1}"></div>`,
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
-        });
-
-        const marker = L.marker([pt[1], pt[0]], { icon: markerIcon }).addTo(map);
-        layersRef.current.vertexMarkers.push(marker);
+    // Add CutSheetRx-style Numbered Vertex Badges [1], [2], [3]...
+    coordinates.forEach((pt, idx) => {
+      const markerIcon = L.divIcon({
+        className: 'custom-vertex-badge',
+        html: `
+          <div style="background: rgba(15, 23, 42, 0.95); border: 2px solid #F59E0B; color: #FCD34D; font-weight: 800; font-size: 11px; width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);">
+            ${idx + 1}
+          </div>
+        `,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
       });
-    }
+
+      const marker = L.marker([pt[1], pt[0]], { icon: markerIcon }).addTo(map);
+      layersRef.current.vertexMarkers.push(marker);
+    });
   }, [L, coordinates, isDrawing]);
 
-  // Compute dominant flow aspect angle for UI badge
-  const aspectAngle = React.useMemo(() => {
-    if (!analysisData?.metrics) return 90;
-    if (analysisData.metrics.dominant_aspect_degrees !== undefined) {
-      return analysisData.metrics.dominant_aspect_degrees;
-    }
-    const match = analysisData.metrics.dominant_slope_direction?.match(/\(([\d.]+)°\)/);
-    return match ? parseFloat(match[1]) : 90;
-  }, [analysisData]);
-
-  // Render 2D Heatmap, Waterlogging Zones, Primary Sinks, Drainage Ditches, and Flow Arrows
+  // Render Map Layers based on active mode (Drainage vs Grading)
   useEffect(() => {
     if (!L || !mapInstanceRef.current) return;
     const heatmapGroup = layersRef.current.heatmapLayer;
+    const gradingGroup = layersRef.current.gradingLayer;
     const sinksGroup = layersRef.current.sinkMarkersLayer;
     const routesGroup = layersRef.current.drainageRoutesLayer;
     const flowArrowsGroup = layersRef.current.flowArrowsLayer;
 
     heatmapGroup?.clearLayers();
+    gradingGroup?.clearLayers();
     sinksGroup?.clearLayers();
     routesGroup?.clearLayers();
     flowArrowsGroup?.clearLayers();
 
-    if (!analysisData || !analysisData.waterlogging_zones) return;
+    if (!analysisData) return;
 
-    const zones = analysisData.waterlogging_zones; // [[lng, lat, severity], ...]
-    const detailsMap = new Map<string, any>();
-    if (analysisData.zone_details) {
-      analysisData.zone_details.forEach((d) => {
-        detailsMap.set(`${d.lng.toFixed(5)}_${d.lat.toFixed(5)}`, d);
-      });
-    }
+    // ==========================================
+    // MODE 1: DRAINAGE & HYDROLOGICAL FLOW
+    // ==========================================
+    if (mapMode === 'drainage' && analysisData.waterlogging_zones) {
+      const zones = analysisData.waterlogging_zones;
+      const sampleCount = zones.length;
+      const pointRadius = sampleCount > 300 ? 10 : sampleCount > 150 ? 14 : 20;
 
-    // 1. Render continuous translucent heatmap overlay (no heavy borders)
-    const sampleCount = zones.length;
-    const pointRadius = sampleCount > 300 ? 10 : sampleCount > 150 ? 14 : 20;
-
-    zones.forEach(([lng, lat, severity]) => {
-      const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
-      const elevText = detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...';
-      const depressionDepth = detail?.depression_depth || 0;
-      const slopePercent = detail?.slope_percent;
-
-      let fillColor = '#10B981'; // Low risk
-      let strokeColor = '#059669';
-
-      if (severity >= 0.7) {
-        fillColor = '#F43F5E'; // Severe pooling
-        strokeColor = '#BE123C';
-      } else if (severity >= 0.4) {
-        fillColor = '#F59E0B'; // Moderate pooling
-        strokeColor = '#D97706';
-      } else if (severity >= 0.25) {
-        fillColor = '#06B6D4'; // Mild depression
-        strokeColor = '#0891B2';
-      }
-
-      const circle = L.circle([lat, lng], {
-        radius: pointRadius,
-        stroke: true,
-        weight: 0.5,
-        color: strokeColor,
-        opacity: overlayOpacity * 0.25,
-        fillColor: fillColor,
-        fillOpacity: overlayOpacity * 0.45,
-      });
-
-      const riskLabel =
-        severity >= 0.7
-          ? 'Severe Waterlogging Risk (Ponding Basin)'
-          : severity >= 0.4
-            ? 'Moderate Waterlogging Risk'
-            : 'Low / Safe Drainage';
-
-      circle.bindPopup(`
-        <div class="p-1 space-y-1.5 text-xs">
-          <div class="font-bold flex items-center gap-1.5 ${
-            severity >= 0.7 ? 'text-rose-400' : severity >= 0.4 ? 'text-amber-400' : 'text-cyan-400'
-          }">
-            <span class="w-2 h-2 rounded-full inline-block ${
-              severity >= 0.7 ? 'bg-rose-500' : severity >= 0.4 ? 'bg-amber-500' : 'bg-cyan-500'
-            }"></span>
-            <span>${riskLabel}</span>
-          </div>
-          <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
-            <div>Ground Elevation:</div>
-            <div class="font-mono font-semibold text-right text-cyan-300">${elevText}</div>
-            <div>Risk Severity:</div>
-            <div class="font-mono font-semibold text-right">${Math.round(severity * 100)}%</div>
-            ${depressionDepth > 0 ? `<div>Depression Depth:</div><div class="font-mono text-rose-300 text-right">-${depressionDepth.toFixed(2)}m</div>` : ''}
-            ${slopePercent !== undefined ? `<div>Surface Slope:</div><div class="font-mono text-slate-300 text-right">${slopePercent.toFixed(1)}%</div>` : ''}
-            <div>Coordinates:</div>
-            <div class="font-mono text-[10px] text-right">${lng.toFixed(5)}, ${lat.toFixed(5)}</div>
-          </div>
-        </div>
-      `);
-
-      heatmapGroup.addLayer(circle);
-    });
-
-    // 2. Render Top Primary Critical Sinks with clear, labeled focal pins (De-cluttered)
-    if (showSinkMarkers) {
-      const primarySinks: { lng: number; lat: number; depth: number; elev: string; sev: number }[] = [];
-
-      // Prefer start coordinates of engineered drainage routes as primary focal sinks
-      if (analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
-        analysisData.drainage_routes.forEach((r) => {
-          const detail = detailsMap.get(`${r.sink_point[0].toFixed(5)}_${r.sink_point[1].toFixed(5)}`);
-          primarySinks.push({
-            lng: r.sink_point[0],
-            lat: r.sink_point[1],
-            depth: detail?.depression_depth || 0.45,
-            elev: detail ? `${detail.elevation.toFixed(2)} m` : '461.0 m',
-            sev: r.severity || 0.85,
-          });
-        });
-      } else {
-        // Fallback: top 3 highest severity points
-        const sorted = [...zones].sort((a, b) => b[2] - a[2]).slice(0, 3);
-        sorted.forEach(([lng, lat, sev]) => {
-          const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
-          primarySinks.push({
-            lng,
-            lat,
-            depth: detail?.depression_depth || 0.35,
-            elev: detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...',
-            sev,
-          });
+      const detailsMap = new Map<string, any>();
+      if (analysisData.zone_details) {
+        analysisData.zone_details.forEach((d) => {
+          detailsMap.set(`${d.lng.toFixed(5)}_${d.lat.toFixed(5)}`, d);
         });
       }
 
-      primarySinks.forEach((sink, idx) => {
-        const pingIcon = L.divIcon({
-          className: 'sink-radar-pin',
-          html: `
-            <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
-              <div class="sink-ping-ring" style="width: 36px; height: 36px;"></div>
-              <div class="sink-core-dot" style="width: 14px; height: 14px; background: #F43F5E; border: 2px solid #FFFFFF; box-shadow: 0 0 12px #F43F5E;"></div>
-              <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: rgba(15,23,42,0.92); border: 1px solid #F43F5E; color: #FDA4AF; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; box-shadow: 0 4px 10px rgba(0,0,0,0.6);">
-                🔴 Sink #${idx + 1}
-              </div>
-            </div>
-          `,
-          iconSize: [44, 44],
-          iconAnchor: [22, 22],
+      // Render waterlogging risk circles
+      zones.forEach(([lng, lat, severity]) => {
+        const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
+        const elevText = detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...';
+
+        let fillColor = '#10B981';
+        let strokeColor = '#059669';
+
+        if (severity >= 0.7) {
+          fillColor = '#F43F5E';
+          strokeColor = '#BE123C';
+        } else if (severity >= 0.4) {
+          fillColor = '#F59E0B';
+          strokeColor = '#D97706';
+        } else if (severity >= 0.25) {
+          fillColor = '#06B6D4';
+          strokeColor = '#0891B2';
+        }
+
+        const circle = L.circle([lat, lng], {
+          radius: pointRadius,
+          stroke: true,
+          weight: 0.5,
+          color: strokeColor,
+          opacity: overlayOpacity * 0.25,
+          fillColor: fillColor,
+          fillOpacity: overlayOpacity * 0.45,
         });
 
-        const sinkMarker = L.marker([sink.lat, sink.lng], { icon: pingIcon });
-        sinkMarker.bindPopup(`
-          <div class="p-2 space-y-2 text-xs">
-            <div class="font-bold text-rose-400 flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-              <span>PRIMARY PONDING SINK #${idx + 1}</span>
+        circle.bindPopup(`
+          <div class="p-1 space-y-1.5 text-xs">
+            <div class="font-bold flex items-center gap-1.5 ${
+              severity >= 0.7 ? 'text-rose-400' : severity >= 0.4 ? 'text-amber-400' : 'text-cyan-400'
+            }">
+              <span>${severity >= 0.7 ? 'Severe Risk' : severity >= 0.4 ? 'Moderate Risk' : 'Low Risk'}</span>
             </div>
-            <p class="text-[11px] text-slate-300">
-              Low-lying basin depression where rainwater naturally pools and cannot drain away.
-            </p>
-            <div class="bg-slate-900/80 p-2 rounded border border-rose-500/20 text-[11px] space-y-1">
-              <div class="flex justify-between">
-                <span class="text-slate-400">Ground Elevation:</span>
-                <span class="text-cyan-300 font-bold font-mono">${sink.elev}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Waterlogging Probability:</span>
-                <span class="text-rose-300 font-bold font-mono">${Math.round(sink.sev * 100)}%</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Depression Depth:</span>
-                <span class="text-amber-300 font-bold font-mono">-${sink.depth.toFixed(2)}m</span>
-              </div>
+            <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
+              <div>Elevation:</div>
+              <div class="font-mono text-cyan-300 text-right font-bold">${elevText}</div>
+              <div>Waterlogging Risk:</div>
+              <div class="font-mono text-right">${Math.round(severity * 100)}%</div>
             </div>
           </div>
         `);
-        sinksGroup.addLayer(sinkMarker);
+        heatmapGroup.addLayer(circle);
       });
-    }
 
-    // 3. Render Engineered Drainage Ditch Routes (A* Pathfinding) with on-line labels
-    if (routesGroup && analysisData.drainage_routes && analysisData.drainage_routes.length > 0) {
-      analysisData.drainage_routes.forEach((route, idx) => {
-        const latLngs = route.path_coordinates.map((pt) => [pt[1], pt[0]]);
-
-        const ditchLine = L.polyline(latLngs, {
-          color: '#00F0FF',
-          weight: 4.5,
-          opacity: 0.95,
-          dashArray: '8, 8',
-          lineCap: 'round',
-          lineJoin: 'round',
+      // Primary Sinks
+      if (showSinkMarkers && analysisData.drainage_routes) {
+        analysisData.drainage_routes.forEach((r, idx) => {
+          const pingIcon = L.divIcon({
+            className: 'sink-radar-pin',
+            html: `
+              <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+                <div class="sink-ping-ring" style="width: 36px; height: 36px;"></div>
+                <div class="sink-core-dot" style="width: 14px; height: 14px; background: #F43F5E; border: 2px solid #FFFFFF; box-shadow: 0 0 12px #F43F5E;"></div>
+                <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: rgba(15,23,42,0.92); border: 1px solid #F43F5E; color: #FDA4AF; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px;">
+                  🔴 Sink #${idx + 1}
+                </div>
+              </div>
+            `,
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+          });
+          const marker = L.marker([r.sink_point[1], r.sink_point[0]], { icon: pingIcon });
+          sinksGroup.addLayer(marker);
         });
+      }
 
-        // Permanent on-line label badge
-        ditchLine.bindTooltip(`💧 Ditch #${idx + 1} (${route.length_meters.toFixed(0)}m)`, {
-          permanent: true,
-          direction: 'center',
-          className: 'ditch-label-tooltip',
+      // Engineered Drainage Ditch Routes
+      if (analysisData.drainage_routes) {
+        analysisData.drainage_routes.forEach((route, idx) => {
+          const latLngs = route.path_coordinates.map((pt) => [pt[1], pt[0]]);
+          const ditchLine = L.polyline(latLngs, {
+            color: '#00F0FF',
+            weight: 4.5,
+            opacity: 0.95,
+            dashArray: '8, 8',
+          });
+          ditchLine.bindTooltip(`💧 Ditch #${idx + 1} (${route.length_meters.toFixed(0)}m)`, {
+            permanent: true,
+            direction: 'center',
+            className: 'ditch-label-tooltip',
+          });
+          routesGroup.addLayer(ditchLine);
+
+          // Outlet marker
+          const outletIcon = L.divIcon({
+            className: 'ditch-outlet-pin',
+            html: `<div style="background:#10B981;width:16px;height:16px;border:2px solid #fff;border-radius:4px;box-shadow:0 0 12px #10B981;"></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+          });
+          const outletMarker = L.marker([route.outlet_point[1], route.outlet_point[0]], {
+            icon: outletIcon,
+          });
+          routesGroup.addLayer(outletMarker);
         });
+      }
 
-        ditchLine.bindPopup(`
-          <div class="p-2 space-y-2 text-xs">
-            <div class="font-bold text-cyan-400 flex items-center gap-1.5">
-              <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-              <span>ENGINEERED DRAINAGE DITCH #${idx + 1}</span>
-            </div>
-            <p class="text-[11px] text-slate-300">
-              Excavate this trench path from the waterlogged sink to the safe boundary outlet to drain surface water by gravity.
-            </p>
-            <div class="p-2 rounded bg-slate-900/80 border border-cyan-500/20 text-[11px] space-y-1">
-              <div class="flex justify-between">
-                <span class="text-slate-400">Trench Length:</span>
-                <span class="font-mono font-bold text-white">${route.length_meters.toFixed(1)} m</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Elevation Drop (ΔZ):</span>
-                <span class="font-mono text-cyan-300 font-bold">${route.elevation_drop_meters.toFixed(2)} m</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Slope Gradient:</span>
-                <span class="font-mono text-slate-200">${route.slope_percent.toFixed(2)}%</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Excavation Volume:</span>
-                <span class="font-mono text-amber-300">${route.excavation_volume_m3.toFixed(1)} m³</span>
-              </div>
-              <div class="flex justify-between border-t border-white/10 pt-1">
-                <span class="text-slate-400">Est. Excavation Cost:</span>
-                <span class="font-mono text-emerald-400 font-bold">₹${route.estimated_cost_inr.toLocaleString()}</span>
-              </div>
-            </div>
-            <p class="text-[10px] text-cyan-300/80 italic font-mono">
-              Design: ${route.recommended_ditch_type}
-            </p>
-          </div>
-        `);
-
-        routesGroup.addLayer(ditchLine);
-
-        // Discharge Outlet marker at the end of the ditch
-        const outletCoord = route.outlet_point;
-        const outletIcon = L.divIcon({
-          className: 'ditch-outlet-pin',
-          html: `
-            <div style="background: #10B981; width: 16px; height: 16px; border: 2px solid #FFFFFF; border-radius: 4px; box-shadow: 0 0 12px #10B981; display: flex; align-items: center; justify-content: center;" title="Discharge Outlet">
-              <div style="width: 6px; height: 6px; background: white; border-radius: 1px;"></div>
-            </div>
-          `,
-          iconSize: [16, 16],
-          iconAnchor: [8, 8],
-        });
-
-        const outletMarker = L.marker([outletCoord[1], outletCoord[0]], { icon: outletIcon });
-        outletMarker.bindTooltip(`🟢 Outlet #${idx + 1}`, {
-          permanent: true,
-          direction: 'top',
-          className: 'outlet-label-tooltip',
-        });
-        outletMarker.bindPopup(`
-          <div class="p-2 text-xs space-y-1">
-            <div class="font-bold text-emerald-400">DISCHARGE OUTLET #${idx + 1}</div>
-            <div class="text-[11px] text-slate-300">
-              Safe natural field boundary exit point where trench water discharges into surrounding drains or swales.
-            </div>
-          </div>
-        `);
-        routesGroup.addLayer(outletMarker);
-      });
-    }
-
-    // 4. Render Local Downhill Water Runoff Flow Direction Vectors (Multi-directional)
-    if (flowArrowsGroup && analysisData.bounding_box) {
-      flowArrowsGroup.clearLayers();
-
-      const vectors = analysisData.flow_vectors || [];
-      const bbox = analysisData.bounding_box;
-      const spanLng = bbox.max_lng - bbox.min_lng;
-
-      if (vectors.length > 0) {
-        // Multi-directional local flow vector field across mountain / undulating terrain
+      // Downhill Flow Vectors
+      if (analysisData.flow_vectors && analysisData.bounding_box) {
+        const bbox = analysisData.bounding_box;
+        const spanLng = bbox.max_lng - bbox.min_lng;
         const arrowLen = Math.max(spanLng * 0.045, 0.00025);
 
-        vectors.forEach((vec) => {
-          // Flow direction angle (0=N, 90=E, 180=S, 270=W)
+        analysisData.flow_vectors.forEach((vec) => {
           const rad = (90 - vec.direction_deg) * (Math.PI / 180);
           const dx = Math.cos(rad) * arrowLen;
           const dy = Math.sin(rad) * arrowLen;
@@ -516,15 +512,19 @@ export const FieldMap: React.FC<FieldMapProps> = ({
           const endLat = vec.lat + dy * 0.55;
           const endLng = vec.lng + dx * 0.55;
 
-          // Glowing cyan polyline shaft
-          const arrowShaft = L.polyline([[startLat, startLng], [endLat, endLng]], {
-            color: '#00F0FF',
-            weight: 2.2,
-            opacity: 0.85,
-            dashArray: '3, 3',
-          });
+          const arrowShaft = L.polyline(
+            [
+              [startLat, startLng],
+              [endLat, endLng],
+            ],
+            {
+              color: '#00F0FF',
+              weight: 2.2,
+              opacity: 0.85,
+              dashArray: '3, 3',
+            }
+          );
 
-          // Arrowhead marker rotated in exact local flow direction
           const arrowHeadIcon = L.divIcon({
             className: 'flow-arrow-marker',
             html: `
@@ -535,224 +535,274 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             iconSize: [16, 16],
             iconAnchor: [8, 8],
           });
-
           const headMarker = L.marker([endLat, endLng], { icon: arrowHeadIcon });
-
-          const tooltipHtml = `
-            <div class="text-[11px] p-1 font-sans space-y-0.5">
-              <div class="font-bold text-cyan-300">Runoff Flow: ${vec.cardinal_direction} (${vec.direction_deg.toFixed(1)}°)</div>
-              <div class="text-slate-300 text-[10px]">Elevation: <strong class="text-white">${vec.elevation.toFixed(1)}m</strong> | Slope: <strong class="text-amber-300">${vec.slope_percent.toFixed(1)}%</strong></div>
-            </div>
-          `;
-          arrowShaft.bindTooltip(tooltipHtml);
-          headMarker.bindTooltip(tooltipHtml);
 
           flowArrowsGroup.addLayer(arrowShaft);
           flowArrowsGroup.addLayer(headMarker);
         });
-      } else if (analysisData.metrics) {
-        // Fallback global arrows if no vector field provided
-        let deg = analysisData.metrics.dominant_aspect_degrees ?? 90;
-        if (analysisData.metrics.dominant_slope_direction) {
-          const match = analysisData.metrics.dominant_slope_direction.match(/\(([\d.]+)°\)/);
-          if (match) deg = parseFloat(match[1]);
-        }
-
-        const centerLng = (bbox.min_lng + bbox.max_lng) / 2;
-        const centerLat = (bbox.min_lat + bbox.max_lat) / 2;
-        const spanLat = bbox.max_lat - bbox.min_lat;
-        const rad = (90 - deg) * (Math.PI / 180);
-        const dirLng = Math.cos(rad);
-        const dirLat = Math.sin(rad);
-
-        const offsets = [-0.25, 0.0, 0.25];
-        const perpLng = -dirLat;
-        const perpLat = dirLng;
-
-        offsets.forEach((off) => {
-          const startLng = centerLng + off * spanLng * 0.7 * perpLng - dirLng * spanLng * 0.28;
-          const startLat = centerLat + off * spanLat * 0.7 * perpLat - dirLat * spanLat * 0.28;
-          const endLng = centerLng + off * spanLng * 0.7 * perpLng + dirLng * spanLng * 0.28;
-          const endLat = centerLat + off * spanLat * 0.7 * perpLat + dirLat * spanLat * 0.28;
-
-          const arrowLine = L.polyline([[startLat, startLng], [endLat, endLng]], {
-            color: '#38BDF8',
-            weight: 2.5,
-            opacity: 0.8,
-            dashArray: '5, 5',
-          });
-          flowArrowsGroup.addLayer(arrowLine);
-
-          const arrowHeadIcon = L.divIcon({
-            className: 'flow-arrow-marker',
-            html: `
-              <div style="transform: rotate(${deg - 90}deg); color: #38BDF8; font-size: 18px; font-weight: 900; filter: drop-shadow(0 0 6px #0284c7); line-height: 1;">
-                ➔
-              </div>
-            `,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
-          });
-          const arrowHeadMarker = L.marker([endLat, endLng], { icon: arrowHeadIcon });
-          flowArrowsGroup.addLayer(arrowHeadMarker);
-        });
       }
     }
-  }, [L, analysisData, overlayOpacity, showSinkMarkers]);
+
+    // ==========================================
+    // MODE 2: PRECISION LAND GRADING (CUT / FILL)
+    // ==========================================
+    if (mapMode === 'grading' && analysisData.cut_fill_analysis && analysisData.bounding_box) {
+      const cutFill = analysisData.cut_fill_analysis;
+      const matrix = cutFill.cut_fill_matrix;
+      const rows = matrix.length;
+      const cols = matrix[0].length;
+      const bbox = analysisData.bounding_box;
+
+      const dLng = (bbox.max_lng - bbox.min_lng) / cols;
+      const dLat = (bbox.max_lat - bbox.min_lat) / rows;
+
+      // Render Cut (Red) and Fill (Blue) shaded relief grid
+      for (let r = 0; r < rows; r++) {
+        const latCenter = bbox.max_lat - (r + 0.5) * dLat;
+        for (let c = 0; c < cols; c++) {
+          const lngCenter = bbox.min_lng + (c + 0.5) * dLng;
+          const diff = matrix[r][c]; // positive = cut, negative = fill
+
+          let color = '#3B82F6'; // Fill blue
+          let opacity = 0.4;
+
+          if (diff > 0.05) {
+            // Cut (Red)
+            color = '#EF4444';
+            opacity = Math.min(0.75, 0.25 + (diff / (cutFill.max_cut_depth_m || 1)) * 0.5);
+          } else if (diff < -0.05) {
+            // Fill (Blue)
+            color = '#3B82F6';
+            opacity = Math.min(0.75, 0.25 + (Math.abs(diff) / (cutFill.max_fill_depth_m || 1)) * 0.5);
+          } else {
+            // Near Grade (Green/Cyan)
+            color = '#10B981';
+            opacity = 0.2;
+          }
+
+          const cellBounds: [[number, number], [number, number]] = [
+            [latCenter - dLat * 0.48, lngCenter - dLng * 0.48],
+            [latCenter + dLat * 0.48, lngCenter + dLng * 0.48],
+          ];
+
+          const rect = L.rectangle(cellBounds, {
+            color: 'transparent',
+            weight: 0,
+            fillColor: color,
+            fillOpacity: opacity * overlayOpacity,
+          });
+
+          rect.bindPopup(`
+            <div class="p-1 space-y-1 text-xs font-sans">
+              <div class="font-bold ${diff > 0 ? 'text-rose-400' : 'text-blue-400'}">
+                ${diff > 0 ? `✂️ Cut (Remove Soil): +${diff.toFixed(2)}m` : `🚜 Fill (Deposit Soil): ${diff.toFixed(2)}m`}
+              </div>
+              <div class="text-[11px] text-slate-300">
+                Ground: ${(analysisData.elevation_grid[r]?.[c] ?? 0).toFixed(2)}m | Design: ${(cutFill.design_elevation_grid[r]?.[c] ?? 0).toFixed(2)}m
+              </div>
+            </div>
+          `);
+
+          gradingGroup.addLayer(rect);
+        }
+      }
+
+      // CutSheetRx Center Field Design Slope Indicator Arrow (e.g. "0.09% ↓")
+      const centerLat = (bbox.min_lat + bbox.max_lat) / 2;
+      const centerLng = (bbox.min_lng + bbox.max_lng) / 2;
+      const heading = cutFill.design_heading_degrees;
+      const slope = cutFill.design_slope_percent;
+
+      const centerArrowIcon = L.divIcon({
+        className: 'center-slope-indicator',
+        html: `
+          <div style="background: rgba(15, 23, 42, 0.95); border: 2px solid #00F0FF; padding: 4px 10px; border-radius: 9999px; box-shadow: 0 4px 15px rgba(0,240,255,0.4); display: flex; align-items: center; gap: 6px; white-space: nowrap; transform: translate(-50%, -50%);">
+            <span style="display: inline-block; transform: rotate(${heading - 90}deg); color: #00F0FF; font-weight: 900; font-size: 14px;">➔</span>
+            <span style="color: #fff; font-weight: 800; font-family: monospace; font-size: 12px;">${slope.toFixed(2)}%</span>
+            <span style="color: #94a3b8; font-size: 10px;">${cutFill.heading_compass}</span>
+          </div>
+        `,
+        iconSize: [110, 32],
+        iconAnchor: [55, 16],
+      });
+
+      const centerMarker = L.marker([centerLat, centerLng], { icon: centerArrowIcon });
+      gradingGroup.addLayer(centerMarker);
+    }
+  }, [L, analysisData, mapMode, overlayOpacity, showSinkMarkers]);
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full select-none">
       {/* Map DOM Container */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* Top Center Flow Direction Indicator (Telemetry HUD) */}
-      {analysisData?.metrics && !isDrawing && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 glass-panel-elevated rounded-full border border-cyan-400/40 shadow-neon-cyan animate-in fade-in duration-300">
-          <div className="flex items-center gap-2.5">
-            {analysisData.metrics.is_watershed_divide ? (
-              <div className="flex items-center gap-2">
-                <span className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
-                  <span className="text-sm">⛰️</span>
-                  <span>Watershed Divide:</span>
+      {/* Mode Switcher Pill (Top Center) - CutSheetRx Style */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center p-1 glass-panel-elevated rounded-2xl border border-cyan-500/30 shadow-2xl backdrop-blur-md">
+        <button
+          onClick={() => onToggleMapMode('drainage')}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            mapMode === 'drainage'
+              ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/50 shadow-neon-cyan'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Navigation className="w-3.5 h-3.5" />
+          <span>Drainage & Sinks</span>
+        </button>
+
+        <button
+          onClick={() => onToggleMapMode('grading')}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            mapMode === 'grading'
+              ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/50 shadow-sm'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Scissors className="w-3.5 h-3.5 text-rose-400" />
+          <span>Cut / Fill Land Grading</span>
+        </button>
+
+        <span className="text-slate-600 text-xs px-1">|</span>
+
+        {/* Draw Elevation Profile Button */}
+        <button
+          onClick={() => {
+            setIsDrawingProfile(!isDrawingProfile);
+            profilePointsRef.current = [];
+            layersRef.current.profileLineLayer.clearLayers();
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+            isDrawingProfile
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 animate-pulse'
+              : 'text-slate-300 hover:text-white hover:bg-white/10'
+          }`}
+          title="Click 2 points on field to draw an Elevation Cross-Section"
+        >
+          <TrendingDown className="w-3.5 h-3.5 text-amber-400" />
+          <span>{isDrawingProfile ? 'Click 2 Points...' : 'Cross-Section Profile'}</span>
+        </button>
+      </div>
+
+      {/* Top Right Quick Stats HUD Card - CutSheetRx Style */}
+      {analysisData && (
+        <div className="absolute top-16 right-4 z-20 glass-panel-elevated p-3 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-md max-w-xs space-y-2 text-xs hidden sm:block animate-in fade-in duration-300">
+          {mapMode === 'grading' && analysisData.cut_fill_analysis ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between pb-1 border-b border-white/10">
+                <span className="font-bold text-white uppercase tracking-wider text-[11px]">
+                  Earthwork Balance
                 </span>
-                <span className="font-bold text-xs text-cyan-300 font-mono">
-                  {analysisData.metrics.major_flow_directions?.join(' & ') || analysisData.metrics.dominant_slope_direction}
-                </span>
-                <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/40 font-semibold shadow-sm">
-                  Dual Opposing Flow (2 Flanks)
+                <span className="font-mono text-[10px] text-cyan-300">Cut:Fill 1.20</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 rounded-xl bg-rose-950/30 border border-rose-500/30">
+                  <div className="text-slate-400 text-[10px]">CUT (Excess):</div>
+                  <div className="font-mono font-black text-rose-400 text-sm">
+                    {analysisData.cut_fill_analysis.total_cut_m3.toLocaleString()} m³
+                  </div>
+                </div>
+                <div className="p-2 rounded-xl bg-blue-950/30 border border-blue-500/30">
+                  <div className="text-slate-400 text-[10px]">FILL (Deficit):</div>
+                  <div className="font-mono font-black text-blue-400 text-sm">
+                    {analysisData.cut_fill_analysis.total_fill_m3.toLocaleString()} m³
+                  </div>
+                </div>
+              </div>
+              <div className="pt-1 text-[10.5px] text-slate-300 flex justify-between">
+                <span>Design Grade:</span>
+                <span className="font-mono text-cyan-300 font-bold">
+                  {analysisData.cut_fill_analysis.design_slope_percent}% toward{' '}
+                  {analysisData.cut_fill_analysis.heading_compass}
                 </span>
               </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-400/50 shadow-sm">
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      transform: `rotate(${aspectAngle - 90}deg)`,
-                      transition: 'transform 0.5s ease',
-                    }}
-                    className="text-cyan-400 font-black text-xs"
-                  >
-                    ➔
-                  </span>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between pb-1 border-b border-white/10">
+                <span className="font-bold text-white uppercase tracking-wider text-[11px]">
+                  Hydrology Telemetry
+                </span>
+                <span className="font-mono text-[10px] text-cyan-300">
+                  {analysisData.drainage_routes?.length || 0} Ditches
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 rounded-xl bg-slate-900/60 border border-white/10">
+                  <div className="text-slate-400 text-[10px]">Elev Range:</div>
+                  <div className="font-mono font-bold text-cyan-300">
+                    {analysisData.metrics?.elevation_range}m
+                  </div>
                 </div>
-                <div className="text-xs">
-                  <span className="text-slate-400">Surface Runoff Direction: </span>
-                  <span className="font-bold text-cyan-300 font-mono">
-                    {analysisData.metrics.dominant_slope_direction}
-                  </span>
-                  <span className="text-cyan-400 font-medium ml-1.5">(Downhill ➔)</span>
+                <div className="p-2 rounded-xl bg-slate-900/60 border border-white/10">
+                  <div className="text-slate-400 text-[10px]">Ponding Basins:</div>
+                  <div className="font-mono font-bold text-rose-400">
+                    {analysisData.metrics?.high_risk_points_count || 0}
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Floating Basemap Switcher */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 p-1 glass-panel rounded-xl shadow-xl">
-        <button
-          onClick={() => setActiveBaseMap('dark')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'dark'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-neon-cyan'
-              : 'text-slate-400 hover:text-slate-200'
-            }`}
-        >
-          Dark
-        </button>
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-1 p-1 glass-panel rounded-xl shadow-xl">
         <button
           onClick={() => setActiveBaseMap('satellite')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'satellite'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-neon-cyan'
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            activeBaseMap === 'satellite'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
               : 'text-slate-400 hover:text-slate-200'
-            }`}
+          }`}
         >
           Satellite
         </button>
         <button
-          onClick={() => setActiveBaseMap('osm')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'osm'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-neon-cyan'
+          onClick={() => setActiveBaseMap('dark')}
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            activeBaseMap === 'dark'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
               : 'text-slate-400 hover:text-slate-200'
-            }`}
+          }`}
+        >
+          Dark
+        </button>
+        <button
+          onClick={() => setActiveBaseMap('osm')}
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            activeBaseMap === 'osm'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
         >
           Street
         </button>
       </div>
 
-      {/* Floating Map Visual Guide & Legend Card */}
-      {analysisData && (
-        <div className="absolute bottom-6 left-6 z-20 glass-panel-elevated p-3.5 rounded-2xl border border-cyan-500/30 max-w-xs shadow-2xl backdrop-blur-md">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-neon-cyan"></span>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Map Visual Guide</h4>
-            </div>
-            <span className="text-[10px] text-cyan-300/80 font-mono font-medium">How To Read</span>
-          </div>
-
-          <div className="space-y-2 text-[11px]">
-            {analysisData.metrics?.is_watershed_divide && (
-              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[10.5px] space-y-1 mb-2">
-                <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                  <span>⛰️ Mountain Ridge Watershed Divide</span>
-                </div>
-                <p className="text-slate-300 leading-tight">
-                  Polygon traverses a mountain ridge crest. Water divides naturally into two opposing flow sides (West flank vs East flank) as shown by the diverging local flow vectors.
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2.5">
-              <span className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-white shadow-sm shrink-0"></span>
-              <div>
-                <span className="font-semibold text-rose-300">Red Sinks: </span>
-                <span className="text-slate-300">Depression where rainwater traps & pools</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <span className="w-3.5 h-3.5 rounded bg-emerald-500 border border-white shadow-sm shrink-0"></span>
-              <div>
-                <span className="font-semibold text-emerald-300">Green Square: </span>
-                <span className="text-slate-300">Field Outlet (Where water leaves your land)</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-4 h-1 bg-cyan-400 border-t border-b border-dashed border-cyan-200 shrink-0"></div>
-              <div>
-                <span className="font-semibold text-cyan-300">Cyan Dashed Line: </span>
-                <span className="text-slate-300">Trench to Dig (Recommended drainage ditch)</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <span className="text-cyan-400 font-bold shrink-0 text-sm leading-none">➔</span>
-              <div>
-                <span className="font-semibold text-cyan-300">Local Flow Vectors: </span>
-                <span className="text-slate-300">Exact downhill direction at each point (shows both mountain sides)</span>
-              </div>
-            </div>
-          </div>
+      {/* Real-time Cursor Elevation & GPS HUD (Bottom Center) - CutSheetRx Style */}
+      {mouseElevation && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 px-4 py-1.5 glass-panel-elevated rounded-full border border-white/10 text-xs text-slate-300 font-mono shadow-2xl backdrop-blur-md flex items-center gap-2.5">
+          {mouseElevation.elev > 0 ? (
+            <>
+              <span className="text-cyan-300 font-bold">
+                {mouseElevation.elev.toFixed(2)} m ({(mouseElevation.elev * 3.28084).toFixed(1)} ft)
+              </span>
+              <span className="text-slate-600">|</span>
+            </>
+          ) : null}
+          <span className="text-slate-400 text-[11px]">
+            {mouseElevation.lat.toFixed(5)}, {mouseElevation.lng.toFixed(5)}
+          </span>
         </div>
       )}
 
-      {/* In-Map Drawing Notification Bar */}
-      {isDrawing && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 glass-panel-elevated rounded-full border border-cyan-400/40 shadow-neon-cyan animate-pulse">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
-          <span className="text-xs font-medium text-cyan-200">
-            Click on map to mark field boundary vertices ({coordinates.length} points)
-          </span>
-          {coordinates.length >= 3 && (
-            <button
-              onClick={() => setIsDrawing(false)}
-              className="ml-2 px-2.5 py-1 text-[11px] bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-full transition-colors"
-            >
-              Finish Polygon
-            </button>
-          )}
+      {/* Interactive Profile Drawing Instruction Banner */}
+      {isDrawingProfile && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 px-4 py-2 glass-panel-elevated rounded-full border border-amber-400/60 shadow-2xl text-xs font-semibold text-amber-300 flex items-center gap-2 animate-bounce">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+          <span>Click two points on the map to draw an Elevation Cross-Section Transect</span>
         </div>
       )}
     </div>
   );
 };
-

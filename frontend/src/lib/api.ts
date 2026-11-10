@@ -281,6 +281,21 @@ function generateClientTerrainSimulation(
       ],
       estimated_roi_assessment: 'Estimated 25-35% crop loss prevention across critical depression zones with payback period under 1 season.',
     },
+    cut_fill_analysis: {
+      total_cut_m3: 31250.0,
+      total_fill_m3: 26040.0,
+      cut_fill_ratio: 1.20,
+      cut_per_acre_m3: 1100.4,
+      cut_per_ha_m3: 2717.4,
+      max_cut_depth_m: 1.15,
+      max_fill_depth_m: 0.95,
+      design_slope_percent: 0.12,
+      design_heading_degrees: 135.0,
+      heading_compass: 'Southeast',
+      estimated_leveling_cost_inr: 2968750,
+      cut_fill_matrix: grid.map((row) => row.map((z) => Number((z - (minElev + 0.6)).toFixed(2)))),
+      design_elevation_grid: grid.map((row, r) => row.map((_, c) => Number((baseElev + (1 - r/resolution)*1.8 + (1 - c/resolution)*1.2).toFixed(2)))),
+    },
   };
 }
 
@@ -365,5 +380,76 @@ export async function searchLocation(query: string): Promise<SearchResult[]> {
     console.error('Geocoding search failed:', err);
   }
   return [];
+}
+
+export async function fetchElevationProfile(
+  elevation_grid: number[][],
+  bbox: BoundingBox,
+  start_pt: [number, number],
+  end_pt: [number, number],
+  design_grid?: number[][]
+): Promise<ElevationProfilePoint[]> {
+  try {
+    const res = await fetch(`${API_BASE}/elevation-profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        elevation_grid,
+        design_grid,
+        bbox,
+        start_pt,
+        end_pt,
+        samples: 40
+      }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('API elevation-profile request failed, calculating locally:', err);
+  }
+
+  // Client-side fallback sampling
+  const rows = elevation_grid.length;
+  const cols = elevation_grid[0].length;
+  const span_lng = bbox.max_lng - bbox.min_lng || 1e-5;
+  const span_lat = bbox.max_lat - bbox.min_lat || 1e-5;
+  const center_lat = (bbox.min_lat + bbox.max_lat) / 2.0;
+  const m_per_lat = 111320.0;
+  const m_per_lng = 111320.0 * Math.cos((center_lat * Math.PI) / 180);
+
+  const d_lng_m = (end_pt[0] - start_pt[0]) * m_per_lng;
+  const d_lat_m = (end_pt[1] - start_pt[1]) * m_per_lat;
+  const total_dist_m = Math.sqrt(d_lng_m ** 2 + d_lat_m ** 2);
+
+  const points: ElevationProfilePoint[] = [];
+  const samples = 40;
+  for (let i = 0; i < samples; i++) {
+    const t = i / (samples - 1);
+    const lng = start_pt[0] + t * (end_pt[0] - start_pt[0]);
+    const lat = start_pt[1] + t * (end_pt[1] - start_pt[1]);
+    const dist = Math.round(t * total_dist_m * 10) / 10;
+
+    const col_f = Math.max(0, Math.min(cols - 1, ((lng - bbox.min_lng) / span_lng) * (cols - 1)));
+    const row_f = Math.max(0, Math.min(rows - 1, ((bbox.max_lat - lat) / span_lat) * (rows - 1)));
+    const r = Math.round(row_f);
+    const c = Math.round(col_f);
+
+    const elev = elevation_grid[r]?.[c] ?? 460;
+    const des_elev = design_grid?.[r]?.[c] ?? elev;
+
+    points.push({
+      index: i,
+      distance_m: dist,
+      lng: Number(lng.toFixed(6)),
+      lat: Number(lat.toFixed(6)),
+      elevation_m: Number(elev.toFixed(2)),
+      design_elevation_m: Number(des_elev.toFixed(2)),
+      cut_m: Math.max(0, Number((elev - des_elev).toFixed(2))),
+      fill_m: Math.max(0, Number((des_elev - elev).toFixed(2)))
+    });
+  }
+
+  return points;
 }
 

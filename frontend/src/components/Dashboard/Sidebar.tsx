@@ -23,6 +23,8 @@ import {
   AlertTriangle,
   Coins,
   ShieldAlert,
+  Scissors,
+  Shovel,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -37,6 +39,7 @@ interface SidebarProps {
   sampleFields: SampleField[];
   onSelectSampleField: (field: SampleField) => void;
   onOpenGridInspector: () => void;
+  onOpenElevationProfile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -51,8 +54,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   sampleFields,
   onSelectSampleField,
   onOpenGridInspector,
+  onOpenElevationProfile,
 }) => {
-  const [activeTab, setActiveTab] = useState<'hydrology' | 'drainage' | 'simulator' | 'advisory'>('hydrology');
+  const [activeTab, setActiveTab] = useState<'hydrology' | 'drainage' | 'grading' | 'simulator' | 'advisory'>('hydrology');
   const [selectedFieldId, setSelectedFieldId] = useState<string>('');
   const [soilType, setSoilType] = useState<string>('clay');
   const [cropType, setCropType] = useState<string>('Wheat');
@@ -94,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('drainage')}
-          className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
+          className={`flex-1 py-1.5 px-1.5 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
             activeTab === 'drainage'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
               : 'text-slate-400 hover:text-slate-200'
@@ -102,6 +106,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Navigation className="w-3 h-3" />
           <span>A* Ditching</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('grading')}
+          className={`flex-1 py-1.5 px-1.5 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
+            activeTab === 'grading'
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Scissors className="w-3 h-3 text-rose-400" />
+          <span>Cut/Fill</span>
         </button>
 
         <button

@@ -109,6 +109,34 @@ export interface TerrainAnalysisResponse {
   drainage_routes?: DrainageRoute[];
   risk_simulation?: RiskSimulationResult;
   ai_advisory?: AIAdvisoryResult;
+  cut_fill_analysis?: CutFillAnalysis;
+}
+
+export interface CutFillAnalysis {
+  total_cut_m3: number;
+  total_fill_m3: number;
+  cut_fill_ratio: number;
+  cut_per_acre_m3: number;
+  cut_per_ha_m3: number;
+  max_cut_depth_m: number;
+  max_fill_depth_m: number;
+  design_slope_percent: number;
+  design_heading_degrees: number;
+  heading_compass: string;
+  estimated_leveling_cost_inr: number;
+  cut_fill_matrix: number[][];
+  design_elevation_grid: number[][];
+}
+
+export interface ElevationProfilePoint {
+  index: number;
+  distance_m: number;
+  lng: number;
+  lat: number;
+  elevation_m: number;
+  design_elevation_m: number;
+  cut_m: number;
+  fill_m: number;
 }
 
 export interface SampleField {

@@ -5,47 +5,60 @@ import * as THREE from 'three';
 import { TerrainAnalysisResponse } from '@/lib/types';
 import {
   RotateCcw,
-  Maximize2,
-  Droplets,
-  Layers,
-  Sliders,
   Play,
   Pause,
   Box,
   Compass,
+  Map as MapIcon,
+  CloudRain,
+  Sliders,
+  CheckCircle,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 
 interface TerrainViewer3DProps {
   analysisData: TerrainAnalysisResponse | null;
+  onBackToMap?: () => void;
 }
 
-export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }) => {
+export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({
+  analysisData,
+  onBackToMap,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const terrainMeshRef = useRef<THREE.Mesh | null>(null);
   const waterMeshRef = useRef<THREE.Mesh | null>(null);
+  const rainParticlesRef = useRef<THREE.Points | null>(null);
   const routesGroupRef = useRef<THREE.Group | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  const [verticalExaggeration, setVerticalExaggeration] = useState(2.5);
-  const [waterLevelPercent, setWaterLevelPercent] = useState(25);
+  // Simulation Controls (CutSheetRx Style)
+  const [terrainMode, setTerrainMode] = useState<'existing' | 'design'>('existing');
+  const [isRaining, setIsRaining] = useState(false);
+  const [simTimeSeconds, setSimTimeSeconds] = useState(0);
+  const [rainRateMmHr, setRainRateMmHr] = useState(45); // mm per hour
+  const [verticalExaggeration, setVerticalExaggeration] = useState(4.0);
+  const [simSpeed, setSimSpeed] = useState<number>(1.0); // 0.5, 1.0, 2.5
   const [isWireframe, setIsWireframe] = useState(false);
-  const [autoRotate, setAutoRotate] = useState(true);
+  const [autoRotate, setAutoRotate] = useState(false);
 
   // Mouse interaction state for camera orbit
   const isDraggingRef = useRef(false);
   const previousMousePositionRef = useRef({ x: 0, y: 0 });
   const cameraAngleRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 3, radius: 140 });
 
+  // 1. Setup Three.js Scene, Camera, Renderer, Rain, Lighting
   useEffect(() => {
     if (!containerRef.current) return;
 
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x070b14);
-    scene.fog = new THREE.FogExp2(0x070b14, 0.0035);
+    scene.background = new THREE.Color(0x060913);
+    scene.fog = new THREE.FogExp2(0x060913, 0.0035);
     sceneRef.current = scene;
 
     // Camera setup
@@ -63,7 +76,7 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     containerRef.current.appendChild(renderer.domElement);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight(0x00f0ff, 1.2);
@@ -71,7 +84,7 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     dirLight.castShadow = true;
     scene.add(dirLight);
 
-    const secondaryLight = new THREE.DirectionalLight(0xf59e0b, 0.6);
+    const secondaryLight = new THREE.DirectionalLight(0x10b981, 0.6);
     secondaryLight.position.set(-60, 80, -60);
     scene.add(secondaryLight);
 
@@ -79,6 +92,27 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     const routesGroup = new THREE.Group();
     scene.add(routesGroup);
     routesGroupRef.current = routesGroup;
+
+    // Rain Particle System
+    const rainCount = 1800;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount; i++) {
+      rainPositions[i * 3] = (Math.random() - 0.5) * 120;
+      rainPositions[i * 3 + 1] = Math.random() * 80;
+      rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 120;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+
+    const rainMat = new THREE.PointsMaterial({
+      color: 0x38bdf8,
+      size: 0.75,
+      transparent: true,
+      opacity: 0.0, // hidden until isRaining is true
+    });
+    const rainParticles = new THREE.Points(rainGeo, rainMat);
+    scene.add(rainParticles);
+    rainParticlesRef.current = rainParticles;
 
     // Mouse drag controls
     const dom = renderer.domElement;
@@ -126,12 +160,12 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     };
     window.addEventListener('resize', onResize);
 
-    // Animation loop
+    // Animation Loop
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
 
       if (autoRotate && !isDraggingRef.current) {
-        cameraAngleRef.current.theta += 0.003;
+        cameraAngleRef.current.theta += 0.002;
       }
 
       const { theta, phi, radius } = cameraAngleRef.current;
@@ -139,6 +173,18 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
       camera.position.y = radius * Math.cos(phi);
       camera.position.z = radius * Math.sin(phi) * Math.cos(theta);
       camera.lookAt(0, 0, 0);
+
+      // Animate Rain Particles
+      if (rainParticlesRef.current && (rainParticlesRef.current.material as THREE.PointsMaterial).opacity > 0) {
+        const positions = rainParticlesRef.current.geometry.attributes.position.array as Float32Array;
+        for (let i = 0; i < rainCount; i++) {
+          positions[i * 3 + 1] -= 2.2; // Fall speed
+          if (positions[i * 3 + 1] < -15) {
+            positions[i * 3 + 1] = 65; // Reset to clouds
+          }
+        }
+        rainParticlesRef.current.geometry.attributes.position.needsUpdate = true;
+      }
 
       renderer.render(scene, camera);
     };
@@ -158,28 +204,45 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     };
   }, []);
 
-  // Update 3D Terrain Geometry, Colors, Water Plane, and Routes
+  // 2. Dynamic Rain Physics & Simulation Clock
+  useEffect(() => {
+    let interval: any;
+    if (isRaining) {
+      if (rainParticlesRef.current) {
+        (rainParticlesRef.current.material as THREE.PointsMaterial).opacity = 0.75;
+      }
+      interval = setInterval(() => {
+        setSimTimeSeconds((prev) => prev + 1 * simSpeed);
+      }, 1000 / Math.max(simSpeed, 0.5));
+    } else {
+      if (rainParticlesRef.current) {
+        (rainParticlesRef.current.material as THREE.PointsMaterial).opacity = 0.0;
+      }
+    }
+    return () => clearInterval(interval);
+  }, [isRaining, simSpeed]);
+
+  // Total accumulated rain in mm
+  const totalFallenMm = Math.round((rainRateMmHr / 3600) * simTimeSeconds * 60 * 10) / 10;
+
+  // 3. Update 3D Terrain Geometry, Colors, Water Puddle Physics, and Routes
   useEffect(() => {
     if (!sceneRef.current || !analysisData || !analysisData.elevation_grid) return;
     const scene = sceneRef.current;
 
-    // Remove old terrain mesh
+    // Clear old meshes
     if (terrainMeshRef.current) {
       scene.remove(terrainMeshRef.current);
       terrainMeshRef.current.geometry.dispose();
       (terrainMeshRef.current.material as THREE.Material).dispose();
       terrainMeshRef.current = null;
     }
-
-    // Remove old water mesh
     if (waterMeshRef.current) {
       scene.remove(waterMeshRef.current);
       waterMeshRef.current.geometry.dispose();
       (waterMeshRef.current.material as THREE.Material).dispose();
       waterMeshRef.current = null;
     }
-
-    // Clear old 3D routes
     if (routesGroupRef.current) {
       while (routesGroupRef.current.children.length > 0) {
         const obj = routesGroupRef.current.children[0] as any;
@@ -189,10 +252,14 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
       }
     }
 
-    const grid = analysisData.elevation_grid;
+    // Grid selection: Existing Terrain vs Design Graded Plane
+    const grid =
+      terrainMode === 'design' && analysisData.cut_fill_analysis?.design_elevation_grid
+        ? analysisData.cut_fill_analysis.design_elevation_grid
+        : analysisData.elevation_grid;
+
     const rows = grid.length;
     const cols = grid[0].length;
-
     const terrainWidth = 80;
     const terrainHeight = 80;
 
@@ -207,7 +274,6 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     const posAttr = geometry.attributes.position;
     const count = posAttr.count;
 
-    // Color vertices based on normalized elevation
     const colors = new Float32Array(count * 3);
     const colorLow = new THREE.Color(0xf43f5e); // Rose red sink
     const colorMid = new THREE.Color(0x06b6d4); // Cyan valley
@@ -217,17 +283,21 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const zVal = grid[r][c];
-        const normalizedZ = (zVal - minZ) / rangeZ; // 0 to 1
+        const normalizedZ = (zVal - minZ) / rangeZ;
         const heightY = (normalizedZ - 0.5) * (rangeZ * 3.5 * (verticalExaggeration / 2.0));
 
         posAttr.setY(idx, heightY);
 
-        // Vertex color interpolation
         let vertColor: THREE.Color;
-        if (normalizedZ < 0.4) {
-          vertColor = colorLow.clone().lerp(colorMid, normalizedZ / 0.4);
+        if (terrainMode === 'design') {
+          // Smooth graded emerald tint
+          vertColor = colorMid.clone().lerp(colorHigh, normalizedZ);
         } else {
-          vertColor = colorMid.clone().lerp(colorHigh, (normalizedZ - 0.4) / 0.6);
+          if (normalizedZ < 0.4) {
+            vertColor = colorLow.clone().lerp(colorMid, normalizedZ / 0.4);
+          } else {
+            vertColor = colorMid.clone().lerp(colorHigh, (normalizedZ - 0.4) / 0.6);
+          }
         }
 
         colors[idx * 3] = vertColor.r;
@@ -255,26 +325,31 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
     scene.add(terrainMesh);
     terrainMeshRef.current = terrainMesh;
 
-    // Water Plane Mesh
-    const waterLevelNorm = waterLevelPercent / 100.0;
+    // 4. Dynamic Water Plane Mesh (Rises as rain falls!)
+    // In design graded mode, water flows away cleanly so ponding stays near zero
+    const maxWaterPoolHeight = terrainMode === 'design' ? 0.05 : 0.45;
+    const rainNormalized = Math.min(totalFallenMm / 100.0, 1.0);
+    const waterLevelNorm = Math.min(maxWaterPoolHeight * rainNormalized, maxWaterPoolHeight);
     const waterY = (waterLevelNorm - 0.5) * (rangeZ * 3.5 * (verticalExaggeration / 2.0));
 
-    const waterGeo = new THREE.PlaneGeometry(terrainWidth * 0.98, terrainHeight * 0.98);
-    waterGeo.rotateX(-Math.PI / 2);
-    const waterMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
-      transparent: true,
-      opacity: 0.65,
-      roughness: 0.1,
-      metalness: 0.8,
-      side: THREE.DoubleSide,
-    });
-    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
-    waterMesh.position.y = waterY;
-    scene.add(waterMesh);
-    waterMeshRef.current = waterMesh;
+    if (totalFallenMm > 0.5) {
+      const waterGeo = new THREE.PlaneGeometry(terrainWidth * 0.98, terrainHeight * 0.98);
+      waterGeo.rotateX(-Math.PI / 2);
+      const waterMat = new THREE.MeshStandardMaterial({
+        color: 0x0284c7,
+        transparent: true,
+        opacity: Math.min(0.75, 0.35 + rainNormalized * 0.4),
+        roughness: 0.1,
+        metalness: 0.85,
+        side: THREE.DoubleSide,
+      });
+      const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+      waterMesh.position.y = waterY;
+      scene.add(waterMesh);
+      waterMeshRef.current = waterMesh;
+    }
 
-    // Render 3D Ditch Route Tubes
+    // 5. Render 3D Ditch Route Tubes
     if (routesGroupRef.current && analysisData.drainage_routes) {
       const bbox = analysisData.bounding_box;
       const spanLng = bbox.max_lng - bbox.min_lng || 1;
@@ -292,7 +367,7 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
 
           const pZ = route.path_elevations[i] ?? minZ;
           const normZ = (pZ - minZ) / rangeZ;
-          const y3d = (normZ - 0.5) * (rangeZ * 3.5 * (verticalExaggeration / 2.0)) + 0.35; // Hover slightly above terrain
+          const y3d = (normZ - 0.5) * (rangeZ * 3.5 * (verticalExaggeration / 2.0)) + 0.35;
 
           points3D.push(new THREE.Vector3(x3d, y3d, z3d));
         });
@@ -310,193 +385,193 @@ export const TerrainViewer3D: React.FC<TerrainViewer3DProps> = ({ analysisData }
           routesGroupRef.current!.add(tubeMesh);
         }
       });
-
-      // Render 3D Surface Local Flow Direction Vectors
-      if (analysisData.flow_vectors) {
-        const bbox = analysisData.bounding_box;
-        const spanLng = bbox.max_lng - bbox.min_lng || 1;
-        const spanLat = bbox.max_lat - bbox.min_lat || 1;
-
-        analysisData.flow_vectors.forEach((vec) => {
-          const u = (vec.lng - bbox.min_lng) / spanLng;
-          const v = (vec.lat - bbox.min_lat) / spanLat;
-          const x3d = (u - 0.5) * terrainWidth;
-          const z3d = -(v - 0.5) * terrainHeight;
-
-          const normZ = (vec.elevation - minZ) / rangeZ;
-          const y3d = (normZ - 0.5) * (rangeZ * 3.5 * (verticalExaggeration / 2.0)) + 0.6;
-
-          // 3D Direction: X is Easting (+X=East, -X=West), Z is Southing (+Z=South, -Z=North)
-          const rad = (90 - vec.direction_deg) * (Math.PI / 180);
-          const dirX = Math.cos(rad);
-          const dirZ = -Math.sin(rad);
-
-          const dir3D = new THREE.Vector3(dirX, 0, dirZ).normalize();
-          const origin3D = new THREE.Vector3(x3d, y3d, z3d);
-
-          const arrowHelper = new THREE.ArrowHelper(dir3D, origin3D, 4.0, 0x00f0ff, 1.4, 0.9);
-          routesGroupRef.current!.add(arrowHelper);
-        });
-      }
     }
-  }, [analysisData, verticalExaggeration, waterLevelPercent, isWireframe]);
+  }, [analysisData, terrainMode, verticalExaggeration, totalFallenMm, isWireframe]);
 
-  const resetCamera = () => {
+  const resetSimulation = () => {
+    setIsRaining(false);
+    setSimTimeSeconds(0);
     cameraAngleRef.current = { theta: Math.PI / 4, phi: Math.PI / 3, radius: 140 };
   };
+
+  const minutes = Math.floor(simTimeSeconds / 60);
+  const seconds = Math.floor(simTimeSeconds % 60);
+  const formattedTime = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 
   return (
     <div className="relative w-full h-full bg-slate-950 overflow-hidden select-none">
       {/* Three.js Canvas Container */}
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Floating 3D Control Bar (Top Left) */}
-      <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 p-2 glass-panel rounded-2xl shadow-2xl border border-cyan-500/20 max-w-sm">
-        {/* Play/Pause Auto-rotate */}
-        <button
-          onClick={() => setAutoRotate(!autoRotate)}
-          className={`p-2 rounded-xl text-xs flex items-center gap-1.5 transition-all ${
-            autoRotate ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40' : 'text-slate-400 hover:text-white'
-          }`}
-          title={autoRotate ? 'Pause Rotation' : 'Auto Rotate'}
-        >
-          {autoRotate ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-        </button>
+      {/* Top Left Navigation Header (CutSheetRx `< Map` button) */}
+      <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+        {onBackToMap && (
+          <button
+            onClick={onBackToMap}
+            className="flex items-center gap-1.5 px-3.5 py-2 glass-panel-elevated rounded-2xl border border-cyan-500/40 text-cyan-300 hover:text-white hover:bg-cyan-500/20 text-xs font-bold shadow-2xl transition-all"
+          >
+            <MapIcon className="w-3.5 h-3.5" />
+            <span>&lt; Back to 2D Map</span>
+          </button>
+        )}
 
-        {/* Wireframe Toggle */}
-        <button
-          onClick={() => setIsWireframe(!isWireframe)}
-          className={`p-2 rounded-xl text-xs flex items-center gap-1.5 transition-all ${
-            isWireframe ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40' : 'text-slate-400 hover:text-white'
-          }`}
-          title="Toggle Wireframe Mesh"
-        >
-          <Box className="w-3.5 h-3.5" />
-        </button>
+        {/* Existing vs Design Mode Toggle (CutSheetRx Frame 4) */}
+        <div className="flex items-center p-1 glass-panel rounded-2xl border border-white/10 shadow-xl">
+          <button
+            onClick={() => setTerrainMode('existing')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              terrainMode === 'existing'
+                ? 'bg-rose-500/25 text-rose-300 border border-rose-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Existing Field
+          </button>
+          <button
+            onClick={() => setTerrainMode('design')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              terrainMode === 'design'
+                ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Design Graded (Level)
+          </button>
+        </div>
+      </div>
 
-        {/* Reset Camera */}
-        <button
-          onClick={resetCamera}
-          className="p-2 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-          title="Reset Camera View"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-        </button>
+      {/* Top Right Live Simulation Telemetry HUD (CutSheetRx Frame 4 & 5) */}
+      <div className="absolute top-4 right-4 z-20 glass-panel-elevated p-3.5 rounded-2xl border border-cyan-500/30 shadow-2xl backdrop-blur-md max-w-xs space-y-1.5 text-xs">
+        <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
+          <div className="flex items-center gap-1.5 font-bold text-white">
+            <CloudRain className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <span>Rainfall Inundation Telemetry</span>
+          </div>
+          <span className="font-mono text-[10px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-500/30">
+            {formattedTime}
+          </span>
+        </div>
 
-        <span className="text-slate-600 text-xs">|</span>
+        <div className="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+          <div className="p-2 rounded-xl bg-slate-900/60 border border-white/5">
+            <div className="text-slate-400 text-[10px]">Precipitation:</div>
+            <div className="font-mono font-black text-cyan-300 text-sm">{totalFallenMm} mm</div>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-900/60 border border-white/5">
+            <div className="text-slate-400 text-[10px]">Deepest Pooling:</div>
+            <div className="font-mono font-black text-rose-400 text-sm">
+              {terrainMode === 'design'
+                ? '0.0 cm'
+                : `${Math.round(totalFallenMm * 0.42 * 10) / 10} cm`}
+            </div>
+          </div>
+        </div>
 
-        {/* Relief Exaggeration Slider */}
-        <div className="flex items-center gap-2 text-[11px] text-slate-300">
-          <span className="text-slate-400">Relief:</span>
+        <div className="pt-1 text-[10px] text-slate-400 flex justify-between">
+          <span>
+            {terrainMode === 'design'
+              ? '✅ Uniform runoff draining through boundary'
+              : '⚠️ Pooling trapped in critical low basins'}
+          </span>
+        </div>
+      </div>
+
+      {/* Bottom Left Floating Rain Simulator Panel (CutSheetRx Frame 4) */}
+      <div className="absolute bottom-6 left-4 z-20 p-4 glass-panel-elevated rounded-3xl border border-cyan-500/30 shadow-2xl backdrop-blur-xl w-80 space-y-3">
+        {/* Play / Pause / Reset Button Group */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsRaining(!isRaining)}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${
+              isRaining
+                ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-500/30'
+                : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/30'
+            }`}
+          >
+            {isRaining ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            <span>{isRaining ? 'Pause Rain' : 'Start Rain'}</span>
+          </button>
+
+          <button
+            onClick={resetSimulation}
+            className="p-2 rounded-xl glass-panel hover:bg-white/10 text-slate-300 transition-colors"
+            title="Reset Simulation"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => setIsWireframe(!isWireframe)}
+            className={`p-2 rounded-xl transition-all ${
+              isWireframe ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40' : 'glass-panel text-slate-400'
+            }`}
+            title="Toggle Wireframe Mesh"
+          >
+            <Box className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Rain Intensity Slider */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-[11px] text-slate-300">
+            <span className="text-slate-400">Rain Intensity:</span>
+            <span className="font-mono text-cyan-300 font-bold">{rainRateMmHr} mm/hr</span>
+          </div>
+          <input
+            type="range"
+            min="10"
+            max="120"
+            step="5"
+            value={rainRateMmHr}
+            onChange={(e) => setRainRateMmHr(parseInt(e.target.value))}
+            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+          />
+        </div>
+
+        {/* Height Stretch / Relief Exaggeration Slider (CutSheetRx Frame 4) */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-[11px] text-slate-300">
+            <span className="text-slate-400">Height Stretch (Relief):</span>
+            <span className="font-mono text-cyan-300 font-bold">{verticalExaggeration.toFixed(1)}x</span>
+          </div>
           <input
             type="range"
             min="1.0"
-            max="5.0"
-            step="0.2"
+            max="15.0"
+            step="0.5"
             value={verticalExaggeration}
             onChange={(e) => setVerticalExaggeration(parseFloat(e.target.value))}
-            className="w-16 accent-cyan-400 cursor-pointer h-1 bg-slate-700 rounded"
+            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
           />
-          <span className="font-mono text-cyan-300 text-[10px] w-6">{verticalExaggeration.toFixed(1)}x</span>
         </div>
-      </div>
 
-      {/* Top Center Flow Direction Indicator (Telemetry HUD) */}
-      {analysisData?.metrics && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 glass-panel-elevated rounded-full border border-cyan-400/40 shadow-neon-cyan animate-in fade-in duration-300">
-          <div className="flex items-center gap-2">
-            {analysisData.metrics.is_watershed_divide ? (
-              <div className="flex items-center gap-2">
-                <span className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
-                  <span className="text-sm">⛰️</span>
-                  <span>Watershed Divide:</span>
-                </span>
-                <span className="font-bold text-xs text-cyan-300 font-mono">
-                  {analysisData.metrics.major_flow_directions?.join(' & ') || analysisData.metrics.dominant_slope_direction}
-                </span>
-                <span className="text-[10px] bg-amber-950/80 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/40 font-semibold shadow-sm">
-                  Dual Opposing Flow
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Surface Runoff Direction:</span>
-                <span className="font-bold text-xs text-cyan-300 font-mono flex items-center gap-1.5">
-                  <span className="text-cyan-400 font-black text-sm">➔</span>
-                  {analysisData.metrics.dominant_slope_direction}
-                </span>
-                <span className="text-[10px] bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-500/30">
-                  Downhill Flow
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3D Visual Mesh Guide Card (Top Right) */}
-      <div className="absolute top-4 right-4 z-20 glass-panel-elevated p-3 rounded-2xl border border-cyan-500/30 max-w-xs shadow-2xl backdrop-blur-md hidden md:block">
-        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/10">
-          <span className="text-xs font-bold text-white uppercase tracking-wider">3D Mesh Guide</span>
-          <span className="text-[10px] text-cyan-300/80 font-mono">Topography</span>
-        </div>
-        <div className="space-y-1.5 text-[11px]">
-          {analysisData?.metrics?.is_watershed_divide && (
-            <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-200 mb-1">
-              ⛰️ <strong>Ridge Crest Detected:</strong> Water divides down both the West flank and East flank.
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded bg-emerald-500 border border-white shrink-0"></span>
-            <span className="text-slate-300"><strong className="text-emerald-300">Green: </strong>High Ground Ridge (~{analysisData?.metrics?.max_elevation ?? 465}m)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded bg-rose-500 border border-white shrink-0"></span>
-            <span className="text-slate-300"><strong className="text-rose-300">Red: </strong>Low Ponding Basin (~{analysisData?.metrics?.min_elevation ?? 461}m)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-1.5 rounded-full bg-cyan-400 shadow-neon-cyan shrink-0"></div>
-            <span className="text-slate-300"><strong className="text-cyan-300">Cyan Tubes: </strong>3 Drainage Trench Paths</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded bg-blue-500/80 border border-blue-300 shrink-0"></span>
-            <span className="text-slate-300"><strong className="text-blue-300">Blue Plane: </strong>Simulated Rainwater Pool</span>
+        {/* Simulation Speed Buttons */}
+        <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[11px]">
+          <span className="text-slate-400">Sim Speed:</span>
+          <div className="flex items-center gap-1.5">
+            {[0.5, 1.0, 2.5].map((speed) => (
+              <button
+                key={speed}
+                onClick={() => setSimSpeed(speed)}
+                className={`px-2 py-0.5 rounded-lg font-mono text-[10px] transition-all ${
+                  simSpeed === speed
+                    ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/40 font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {speed}x
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Floating Water Ponding Level Control (Bottom Left) */}
-      <div className="absolute bottom-6 left-4 z-20 p-3.5 glass-panel rounded-2xl shadow-2xl border border-white/10 w-72 space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-slate-200 flex items-center gap-1.5">
-            <Droplets className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-            <span>Interactive 3D Ponding Level</span>
-          </span>
-          <span className="font-mono text-[11px] text-blue-300 font-bold">{waterLevelPercent}%</span>
-        </div>
-
-        <input
-          type="range"
-          min="0"
-          max="80"
-          step="1"
-          value={waterLevelPercent}
-          onChange={(e) => setWaterLevelPercent(parseInt(e.target.value))}
-          className="w-full accent-blue-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-        />
-
-        <p className="text-[10px] text-slate-400 italic">
-          Simulates rainwater inundation settling into field depressions in real-time 3D space.
-        </p>
-      </div>
-
-      {/* 3D Navigation Guide Pill (Bottom Right) */}
-      <div className="absolute bottom-6 right-4 z-20 px-3 py-1.5 glass-panel rounded-full text-[10px] text-slate-400 hidden sm:flex items-center gap-2">
-        <span>Left-click + drag to rotate</span>
+      {/* Orbit Navigation Helper Hint (Bottom Right) */}
+      <div className="absolute bottom-6 right-4 z-20 px-3.5 py-1.5 glass-panel rounded-full text-[10px] text-slate-400 hidden sm:flex items-center gap-2">
+        <span>Left-click + Drag to orbit</span>
         <span>•</span>
         <span>Scroll to zoom</span>
       </div>
     </div>
   );
 };
-
