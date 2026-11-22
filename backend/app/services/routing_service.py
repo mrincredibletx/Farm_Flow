@@ -320,38 +320,81 @@ class DrainageRoutingService:
         from shapely.geometry import Polygon
         rows, cols = elevation_grid.shape
 
-        # 1. Identify true lowest point (Sinkhole / Khaddha) inside field polygon
+        # 1. Identify lowest depression points (Sinks / Khaddhe) inside field polygon
         masked_indices = np.argwhere(mask)
         if len(masked_indices) == 0:
             masked_indices = np.argwhere(np.ones_like(mask))
 
-        min_idx = min(masked_indices, key=lambda idx: float(elevation_grid[idx[0], idx[1]]))
-        sink_r, sink_c = int(min_idx[0]), int(min_idx[1])
-        sink_lat = float(grid_lats[sink_r, sink_c])
-        sink_lng = float(grid_lngs[sink_r, sink_c])
-        sink_elev = float(elevation_grid[sink_r, sink_c])
-
         field_elevs = elevation_grid[mask]
-        mean_elev = float(np.mean(field_elevs)) if len(field_elevs) > 0 else sink_elev
-        depth_below_mean = max(0.0, round(mean_elev - sink_elev, 2))
+        mean_elev = float(np.mean(field_elevs)) if len(field_elevs) > 0 else float(np.mean(elevation_grid))
 
-        # 2. Construct virtual outer perimeter boundary (~30-35m buffer)
+        # Detect all local minima inside the field mask
+        local_sinks = []
+        for idx in masked_indices:
+            r, c = int(idx[0]), int(idx[1])
+            z = float(elevation_grid[r, c])
+            # Check 8 neighbours
+            is_local_min = True
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < rows and 0 <= nc < cols:
+                        if elevation_grid[nr, nc] < z:
+                            is_local_min = False
+                            break
+                if not is_local_min:
+                    break
+            if is_local_min:
+                depth = max(0.05, round(mean_elev - z, 2))
+                local_sinks.append({
+                    "id": f"sink-{len(local_sinks)+1}",
+                    "r": r,
+                    "c": c,
+                    "lat": float(grid_lats[r, c]),
+                    "lng": float(grid_lngs[r, c]),
+                    "elev": z,
+                    "depth_below_mean": depth
+                })
+
+        # Sort sinks by deepest depression
+        if local_sinks:
+            local_sinks.sort(key=lambda s: s["depth_below_mean"], reverse=True)
+            primary_sink = local_sinks[0]
+        else:
+            min_idx = min(masked_indices, key=lambda idx: float(elevation_grid[idx[0], idx[1]]))
+            r, c = int(min_idx[0]), int(min_idx[1])
+            z = float(elevation_grid[r, c])
+            primary_sink = {
+                "id": "sink-1",
+                "r": r,
+                "c": c,
+                "lat": float(grid_lats[r, c]),
+                "lng": float(grid_lngs[r, c]),
+                "elev": z,
+                "depth_below_mean": max(0.1, round(mean_elev - z, 2))
+            }
+            local_sinks = [primary_sink]
+
+        sink_r, sink_c = primary_sink["r"], primary_sink["c"]
+        sink_lat, sink_lng = primary_sink["lat"], primary_sink["lng"]
+        sink_elev = primary_sink["elev"]
+        depth_below_mean = primary_sink["depth_below_mean"]
+
+        # 2. Find lowest natural outlet on the actual field boundary perimeter (no virtual boundary)
         poly_coords = list(coordinates)
         if poly_coords[0] != poly_coords[-1]:
             poly_coords.append(poly_coords[0])
         field_poly = Polygon(poly_coords)
 
-        buffer_deg = 0.0003  # ~33 meters in real-world distance
-        virtual_poly = field_poly.buffer(buffer_deg)
-        virtual_coords = [[round(pt[0], 6), round(pt[1], 6)] for pt in list(virtual_poly.exterior.coords)]
-
-        # 3. Sample points along the virtual outer boundary to find lowest outlet
-        ext_coords = list(virtual_poly.exterior.coords)
-        step = max(1, len(ext_coords) // 24)
-        sampled_virtual_pts = ext_coords[::step]
+        # Sample points along the actual field boundary perimeter
+        ext_coords = list(field_poly.exterior.coords)
+        step = max(1, len(ext_coords) // 30)
+        sampled_boundary_pts = ext_coords[::step]
 
         outlet_candidates = []
-        for pt in sampled_virtual_pts:
+        for pt in sampled_boundary_pts:
             p_lng, p_lat = float(pt[0]), float(pt[1])
             dist_sq = (grid_lngs - p_lng)**2 + (grid_lats - p_lat)**2
             cr, cc = np.unravel_index(np.argmin(dist_sq), dist_sq.shape)
@@ -369,35 +412,55 @@ class DrainageRoutingService:
         outlet_lat = best_outlet["lat"]
         outlet_elev = best_outlet["elev"]
 
-        # 4. Pipeline engineering specs
+        # Calculate downhill compass heading
+        d_lat = outlet_lat - sink_lat
+        d_lng = outlet_lng - sink_lng
+        angle_deg = (math.atan2(d_lng, d_lat) * 180.0 / math.pi + 360.0) % 360.0
+        compass_dirs = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"]
+        dir_idx = int((angle_deg + 22.5) // 45) % 8
+        flow_direction_text = f"{compass_dirs[dir_idx]} ({round(angle_deg, 1)}°)"
+
+        # 3. Pipeline engineering specs
         mean_lat = (sink_lat + outlet_lat) / 2.0
         lat_rad = math.radians(mean_lat)
         dy_m = (outlet_lat - sink_lat) * 111320.0
         dx_m = (outlet_lng - sink_lng) * (111320.0 * math.cos(lat_rad))
-        pipe_length = round(math.hypot(dx_m, dy_m), 1)
+        pipe_length = round(max(15.0, math.hypot(dx_m, dy_m)), 1)
 
         natural_fall = sink_elev - outlet_elev
         if natural_fall > 0.15:
             elev_fall = round(natural_fall, 2)
         else:
-            # Standard ICAR / FAO minimum slope 0.8% grade for agricultural sub-surface drainage
             elev_fall = round(max(0.2, pipe_length * 0.008), 2)
 
         slope_pct = round((elev_fall / max(pipe_length, 1.0)) * 100.0, 2)
-        pipe_diameter = 200  # 200 mm / 8-inch
-        pipe_material = "200mm (8-inch) Perforated Corrugated HDPE Pipe with Non-Woven Geotextile Sock"
-        avg_trench_depth = round(max(1.2, depth_below_mean + 0.4), 2)
+        pipe_diameter = 200  # 200 mm
+        pipe_material = "200mm (8-inch) Perforated Corrugated HDPE Sub-surface Pipe"
+        avg_trench_depth = round(max(1.0, depth_below_mean + 0.35), 2)
         trench_width = 0.45
         excavation_vol = round(pipe_length * trench_width * avg_trench_depth, 1)
         estimated_cost = round(pipe_length * 630.0, 0)
+
+        all_sinks_summary = [
+            {
+                "id": s["id"],
+                "coordinates": [round(s["lng"], 6), round(s["lat"], 6)],
+                "elevation_m": round(s["elev"], 2),
+                "depth_below_mean_m": round(s["depth_below_mean"], 2),
+                "severity": "Critical Sink" if s["depth_below_mean"] >= 0.4 else "Moderate Swale"
+            }
+            for s in local_sinks[:3]
+        ]
 
         return {
             "sink_point": [round(sink_lng, 6), round(sink_lat, 6)],
             "sink_elevation_m": round(sink_elev, 2),
             "sink_depth_below_mean_m": depth_below_mean,
+            "all_sinks": all_sinks_summary,
             "outlet_point": [round(outlet_lng, 6), round(outlet_lat, 6)],
             "outlet_elevation_m": round(outlet_elev, 2),
-            "virtual_boundary_coordinates": virtual_coords,
+            "flow_direction_text": flow_direction_text,
+            "virtual_boundary_coordinates": None,
             "pipeline_coordinates": [
                 [round(sink_lng, 6), round(sink_lat, 6)],
                 [round(outlet_lng, 6), round(outlet_lat, 6)]

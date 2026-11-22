@@ -86,7 +86,7 @@ export function generateAgronomicPDFReport(data: TerrainAnalysisResponse) {
       head: [['Component', 'Engineering Value', 'Design Rationale / Standard']],
       body: [
         ['Field Sinkhole (Lowest Depression)', `${pipe.sink_elevation_m.toFixed(2)} m MSL`, `Depression depth: ${pipe.sink_depth_below_mean_m.toFixed(2)}m below field mean`],
-        ['Discharge Outlet (Virtual Boundary)', `${pipe.outlet_elevation_m.toFixed(2)} m MSL`, `Located on 30m perimeter buffer with ${pipe.elevation_drop_meters.toFixed(2)}m gravity head fall`],
+        ['Field Perimeter Discharge Outlet', `${pipe.outlet_elevation_m.toFixed(2)} m MSL`, `Located on natural field border edge with ${pipe.elevation_drop_meters.toFixed(2)}m gravity head fall`],
         ['Pipeline Length', `${pipe.length_meters.toFixed(1)} meters`, 'Direct linear route from sinkhole to lowest perimeter boundary'],
         ['Pipe Material & Size', `${pipe.pipe_diameter_mm}mm Dual-Wall Corrugated HDPE`, 'Perforated corrugated HDPE with geotextile wrap & gravel bedding'],
         ['Gravity Slope Grade', `${pipe.slope_percent.toFixed(2)}% Grade`, pipe.slope_percent >= 0.8 ? 'Compliant with ICAR minimum self-cleansing slope (>= 0.8%)' : 'Slight gradient; smooth interior HDPE recommended'],

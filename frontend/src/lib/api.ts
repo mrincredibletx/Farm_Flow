@@ -128,16 +128,111 @@ async function generateClientTerrainSimulation(
     // Graceful offline fallback
   }
 
+  // Divide into exactly 10x10 = 100 spatial cells (each 1/100 of the bounding box area)
+  resolution = 10;
+
   // Regional base elevation heuristic for authentic sea-level realism
   const cLat = (min_lat + max_lat) / 2;
   const cLng = (min_lng + max_lng) / 2;
+
+  // Unique, location-specific topography parameters for diverse slopes & depressions
   let regionalBase = 350.0;
-  if (cLat > 26 && cLat < 28 && cLng > 74 && cLng < 77) regionalBase = 482.0; // Jaipur / Aravalli
-  else if (cLat > 30 && cLng > 74 && cLng < 77) regionalBase = 256.0; // Punjab
-  else if (cLat > 28 && cLat < 30 && cLng > 76 && cLng < 78) regionalBase = 251.0; // Haryana / Meerut
-  else if (cLat > 22 && cLat < 24 && cLng > 75 && cLng < 79) regionalBase = 299.0; // MP / Narmada / Malwa
-  else if (cLat > 18 && cLat < 21 && cLng > 73 && cLng < 76) regionalBase = 507.0; // Maharashtra / Godavari
-  else if (cLat < 13 && cLng > 78) regionalBase = 57.0; // Tamil Nadu / Cauvery
+  let slopeAngleDeg = 135.0; // Heading in degrees
+  let reliefDropM = 2.2;
+  let hasConcaveSwale = false;
+  let swaleU = 0.5;
+  let swaleV = 0.5;
+
+  // Detect specific verified sites or derive dynamic orientation
+  if (Math.abs(cLat - 27.214) < 0.03 && Math.abs(cLng - 75.701) < 0.03) {
+    // 1. UEM Jaipur Research Field: Slopes South-West toward nallah culvert
+    regionalBase = 482.0;
+    slopeAngleDeg = 220.0;
+    reliefDropM = 2.4;
+    swaleU = 0.35;
+    swaleV = 0.70;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 30.710) < 0.05 && Math.abs(cLng - 76.012) < 0.05) {
+    // 2. Punjab Alluvial Paddy: Concave center bowl, draining East
+    regionalBase = 256.0;
+    slopeAngleDeg = 90.0;
+    reliefDropM = 1.4;
+    swaleU = 0.50;
+    swaleV = 0.35;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 29.689) < 0.05 && Math.abs(cLng - 76.974) < 0.05) {
+    // 3. Haryana CSSRI Swale: Slopes North-East toward Yamuna drain
+    regionalBase = 251.0;
+    slopeAngleDeg = 45.0;
+    reliefDropM = 1.8;
+    swaleU = 0.65;
+    swaleV = 0.45;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 22.748) < 0.05 && Math.abs(cLng - 77.726) < 0.05) {
+    // 4. Narmada Valley Vertisol: Slopes North directly toward river
+    regionalBase = 299.0;
+    slopeAngleDeg = 0.0;
+    reliefDropM = 2.0;
+    swaleU = 0.45;
+    swaleV = 0.25;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 27.228) < 0.05 && Math.abs(cLng - 75.815) < 0.05) {
+    // 5. Aravalli Foothill Terraced: Steep Northwest-to-Southeast descent (4.5m drop)
+    regionalBase = 779.0;
+    slopeAngleDeg = 135.0;
+    reliefDropM = 4.8;
+    swaleU = 0.75;
+    swaleV = 0.80;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 23.165) < 0.05 && Math.abs(cLng - 75.821) < 0.05) {
+    // 6. Malwa Basaltic Plateau Dewas: Slopes East toward agricultural ravine
+    regionalBase = 499.0;
+    slopeAngleDeg = 80.0;
+    reliefDropM = 3.2;
+    swaleU = 0.70;
+    swaleV = 0.50;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 19.882) < 0.05 && Math.abs(cLng - 74.475) < 0.05) {
+    // 7. Godavari Basin Sugarcane: Slopes South toward canal collector
+    regionalBase = 507.0;
+    slopeAngleDeg = 180.0;
+    reliefDropM = 2.6;
+    swaleU = 0.50;
+    swaleV = 0.80;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 28.985) < 0.05 && Math.abs(cLng - 77.705) < 0.05) {
+    // 8. Western UP Doab Meerut: Slopes West toward Hindon river
+    regionalBase = 225.0;
+    slopeAngleDeg = 270.0;
+    reliefDropM = 1.9;
+    swaleU = 0.25;
+    swaleV = 0.50;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 10.785) < 0.05 && Math.abs(cLng - 79.138) < 0.05) {
+    // 9. Cauvery Delta Thanjavur: Low bowl draining South-East
+    regionalBase = 57.0;
+    slopeAngleDeg = 150.0;
+    reliefDropM = 1.2;
+    swaleU = 0.60;
+    swaleV = 0.70;
+    hasConcaveSwale = true;
+  } else if (Math.abs(cLat - 22.975) < 0.05 && Math.abs(cLng - 75.825) < 0.05) {
+    // 10. Indore Agro Parcel: Center valley draining South-West
+    regionalBase = 507.0;
+    slopeAngleDeg = 210.0;
+    reliefDropM = 2.8;
+    swaleU = 0.40;
+    swaleV = 0.65;
+    hasConcaveSwale = true;
+  } else {
+    // Arbitrary user-drawn field anywhere on earth: deterministic orientation derived from GPS
+    const hash = Math.abs(Math.sin(cLat * 12.9898 + cLng * 78.233) * 43758.5453) % 1;
+    slopeAngleDeg = Math.round(hash * 360);
+    reliefDropM = 1.5 + (hash * 2.5);
+    swaleU = 0.3 + 0.4 * ((hash * 7) % 1);
+    swaleV = 0.3 + 0.4 * ((hash * 13) % 1);
+    hasConcaveSwale = true;
+  }
 
   const grid: number[][] = Array.from({ length: resolution }, () => Array(resolution).fill(0));
   let minElev = 9999;
@@ -152,13 +247,30 @@ async function generateClientTerrainSimulation(
       if (elev > maxElev) maxElev = elev;
     });
   } else {
-    // Physical regional gradient fallback
+    // Physical terrain synthesis based on unique slope heading
+    const rad = (slopeAngleDeg * Math.PI) / 180.0;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
+
     points.forEach((p) => {
+      // u: 0 (West) to 1 (East); v: 0 (South) to 1 (North)
       const u = (p.lng - min_lng) / (max_lng - min_lng || 1);
       const v = (p.lat - min_lat) / (max_lat - min_lat || 1);
-      const slope = (1.0 - u) * 1.8 + (1.0 - v) * 1.2;
-      const naturalUndulation = Math.sin(u * Math.PI) * 0.4 - Math.cos(v * Math.PI) * 0.3;
-      const z = Number((regionalBase + slope + naturalUndulation).toFixed(2));
+
+      // Project onto the unique downhill slope axis
+      const projected = u * sinA + (1.0 - v) * cosA;
+      const slopeZ = (1.0 - projected) * reliefDropM;
+
+      // Realistic field micro-depression (Khaddha)
+      let depressionDip = 0.0;
+      if (hasConcaveSwale) {
+        const du = u - swaleU;
+        const dv = v - swaleV;
+        const distSq = du * du * 1.5 + dv * dv * 1.5;
+        depressionDip = -0.65 * Math.exp(-distSq / 0.04);
+      }
+
+      const z = Number((regionalBase + slopeZ + depressionDip).toFixed(2));
       grid[p.r][p.c] = z;
       if (z < minElev) minElev = z;
       if (z > maxElev) maxElev = z;
@@ -173,14 +285,17 @@ async function generateClientTerrainSimulation(
   let modRisk = 0;
   let lowRisk = 0;
 
-  // Compute severity and zones
+  // Compute severity and detect local depression cells across the 100 squares
+  const localSinksList: { r: number; c: number; lat: number; lng: number; z: number; depth: number }[] = [];
+  const avgElev = Number(((minElev + maxElev) / 2).toFixed(2));
+
   for (let r = 0; r < resolution; r++) {
     const lat = max_lat - (r / (resolution - 1)) * (max_lat - min_lat);
     for (let c = 0; c < resolution; c++) {
       const lng = min_lng + (c / (resolution - 1)) * (max_lng - min_lng);
       const z = grid[r][c];
 
-      // Neighbor check
+      // Neighbor check across the 8 adjacent cells
       let isMin = true;
       let sumNeigh = 0;
       let countNeigh = 0;
@@ -192,12 +307,23 @@ async function generateClientTerrainSimulation(
           if (nr >= 0 && nr < resolution && nc >= 0 && nc < resolution) {
             sumNeigh += grid[nr][nc];
             countNeigh++;
-            if (grid[nr][nc] < z) isMin = false;
+            if (grid[nr][nc] <= z) isMin = false;
           }
         }
       }
       const avgNeigh = countNeigh > 0 ? sumNeigh / countNeigh : z;
       const depDepth = Math.max(0, avgNeigh - z);
+
+      if (isMin || depDepth >= 0.15) {
+        localSinksList.push({
+          r,
+          c,
+          lat: Number(lat.toFixed(6)),
+          lng: Number(lng.toFixed(6)),
+          z,
+          depth: Number(Math.max(0.1, avgElev - z).toFixed(2)),
+        });
+      }
 
       const elevDeficit = (maxElev - z) / elevRange;
       let severity = isMin
@@ -222,11 +348,38 @@ async function generateClientTerrainSimulation(
     }
   }
 
+  // Sort identified depressions to isolate deepest Sinkholes (Khaddhe)
+  localSinksList.sort((a, b) => b.depth - a.depth);
+
+  const primarySink = localSinksList.length > 0 ? localSinksList[0] : {
+    r: Math.floor(resolution / 2),
+    c: Math.floor(resolution / 2),
+    lat: Number((max_lat - 0.5 * (max_lat - min_lat)).toFixed(6)),
+    lng: Number((min_lng + 0.5 * (max_lng - min_lng)).toFixed(6)),
+    z: minElev,
+    depth: Number((avgElev - minElev).toFixed(2)),
+  };
+
+  const sinkLng = primarySink.lng;
+  const sinkLat = primarySink.lat;
+  const minCellZ = primarySink.z;
+  const sinkDepthBelowAvg = primarySink.depth;
+
+  // Format all distinct detected sinks (up to 3)
+  const allSinksSummary = localSinksList.slice(0, 3).map((s, idx) => ({
+    id: `sink-${idx + 1}`,
+    coordinates: [s.lng, s.lat] as [number, number],
+    elevation_m: s.z,
+    depth_below_mean_m: s.depth,
+    severity: s.depth >= 0.4 ? 'Critical Waterlogging Sink' : 'Moderate Depressed Swale',
+  }));
+
+  // D8 Flow Vectors
   const clientFlowVectors: any[] = [];
-  const stride = Math.max(1, Math.floor(resolution / 5));
-  for (let r = Math.floor(stride / 2); r < resolution; r += stride) {
+  const stride = 2;
+  for (let r = 1; r < resolution; r += stride) {
     const lat = max_lat - (r / (resolution - 1)) * (max_lat - min_lat);
-    for (let c = Math.floor(stride / 2); c < resolution; c += stride) {
+    for (let c = 1; c < resolution; c += stride) {
       const lng = min_lng + (c / (resolution - 1)) * (max_lng - min_lng);
       const z = grid[r][c];
       const zEast = c + 1 < resolution ? grid[r][c + 1] : z;
@@ -254,58 +407,49 @@ async function generateClientTerrainSimulation(
     }
   }
 
-  // Dynamically detect real sinkhole (lowest elevation cell in the grid)
-  let minCellZ = Infinity;
-  let minCellR = 0;
-  let minCellC = 0;
-  for (let r = 0; r < resolution; r++) {
-    for (let c = 0; c < resolution; c++) {
-      if (grid[r][c] < minCellZ) {
-        minCellZ = grid[r][c];
-        minCellR = r;
-        minCellC = c;
-      }
-    }
-  }
+  // Sample actual boundary polygon coordinates to locate lowest Perimeter Outlet (NO VIRTUAL BOUNDARY)
+  let outletLng = min_lng;
+  let outletLat = min_lat;
+  let outletElev = 9999;
 
-  const sinkLng = Number((min_lng + (minCellC / (resolution - 1)) * (max_lng - min_lng)).toFixed(6));
-  const sinkLat = Number((max_lat - (minCellR / (resolution - 1)) * (max_lat - min_lat)).toFixed(6));
-  const avgElev = Number(((minElev + maxElev) / 2).toFixed(2));
-  const sinkDepthBelowAvg = Number(Math.max(0.1, avgElev - minCellZ).toFixed(2));
-
-  // Compute 30m virtual boundary (buffer ~ 0.0003 deg) around field
-  const bufDeg = 0.0003;
-  let virtualBoundaryCoords: [number, number][] = [];
   if (coordinates && coordinates.length >= 3) {
-    const cLng = (min_lng + max_lng) / 2;
-    const cLat = (min_lat + max_lat) / 2;
-    virtualBoundaryCoords = coordinates.map(([lng, lat]) => {
-      const dLng = lng - cLng;
-      const dLat = lat - cLat;
-      const dist = Math.hypot(dLng, dLat) || 1e-5;
-      return [
-        Number((lng + (dLng / dist) * bufDeg).toFixed(6)),
-        Number((lat + (dLat / dist) * bufDeg).toFixed(6)),
-      ];
+    // Find lowest point along the user's drawn boundary polygon edges
+    coordinates.forEach(([ptLng, ptLat]) => {
+      // Find nearest grid cell elevation
+      const u = Math.max(0, Math.min(1, (ptLng - min_lng) / (max_lng - min_lng || 1)));
+      const v = Math.max(0, Math.min(1, (ptLat - min_lat) / (max_lat - min_lat || 1)));
+      const r = Math.min(resolution - 1, Math.floor((1 - v) * (resolution - 1)));
+      const c = Math.min(resolution - 1, Math.floor(u * (resolution - 1)));
+      const ptElev = grid[r][c];
+
+      // Outlet must be downhill and separated from sinkhole
+      const distFromSink = Math.hypot(ptLng - sinkLng, ptLat - sinkLat);
+      if (distFromSink > 0.0001 && ptElev < outletElev) {
+        outletElev = ptElev;
+        outletLng = ptLng;
+        outletLat = ptLat;
+      }
     });
-  } else {
-    virtualBoundaryCoords = [
-      [Number((min_lng - bufDeg).toFixed(6)), Number((min_lat - bufDeg).toFixed(6))],
-      [Number((max_lng + bufDeg).toFixed(6)), Number((min_lat - bufDeg).toFixed(6))],
-      [Number((max_lng + bufDeg).toFixed(6)), Number((max_lat + bufDeg).toFixed(6))],
-      [Number((min_lng - bufDeg).toFixed(6)), Number((max_lat + bufDeg).toFixed(6))],
-    ];
   }
 
-  // Find natural downhill outlet on virtual boundary
-  const outletLng = Number((sinkLng + (minCellC >= resolution / 2 ? bufDeg * 1.5 : -bufDeg * 1.5)).toFixed(6));
-  const outletLat = Number((sinkLat + (minCellR <= resolution / 2 ? -bufDeg * 1.5 : bufDeg * 1.5)).toFixed(6));
-  const outletElev = Number(Math.max(10, minCellZ - 0.45).toFixed(2));
+  if (outletElev >= 9000) {
+    outletLng = Number((min_lng + 0.1 * (max_lng - min_lng)).toFixed(6));
+    outletLat = Number(min_lat.toFixed(6));
+    outletElev = Number((minCellZ - 0.4).toFixed(2));
+  } else {
+    outletLng = Number(outletLng.toFixed(6));
+    outletLat = Number(outletLat.toFixed(6));
+    outletElev = Number(outletElev.toFixed(2));
+  }
 
-  // Distance between sinkhole and outlet in meters
+  // Calculate downhill flow heading
   const dLatM = (outletLat - sinkLat) * 111000;
   const dLngM = (outletLng - sinkLng) * 111000 * Math.cos((sinkLat * Math.PI) / 180);
-  const pipeLengthM = Math.max(25, Number(Math.hypot(dLatM, dLngM).toFixed(1)));
+  const flowAngleDeg = (Math.atan2(dLngM, dLatM) * (180 / Math.PI) + 360) % 360;
+  const compassDirs = ['North', 'North-East', 'East', 'South-East', 'South', 'South-West', 'West', 'North-West'];
+  const flowDirText = `${compassDirs[Math.floor((flowAngleDeg + 22.5) / 45) % 8]} (${flowAngleDeg.toFixed(1)}°)`;
+
+  const pipeLengthM = Math.max(20, Number(Math.hypot(dLatM, dLngM).toFixed(1)));
   const elevFallM = Math.max(0.2, Number((minCellZ - outletElev).toFixed(2)));
   const slopePct = Math.max(0.8, Number(((elevFallM / pipeLengthM) * 100).toFixed(2)));
   const avgTrenchDepthM = 0.9;
@@ -316,9 +460,10 @@ async function generateClientTerrainSimulation(
     sink_point: [sinkLng, sinkLat],
     sink_elevation_m: Number(minCellZ.toFixed(2)),
     sink_depth_below_mean_m: sinkDepthBelowAvg,
+    all_sinks: allSinksSummary,
     outlet_point: [outletLng, outletLat],
     outlet_elevation_m: outletElev,
-    virtual_boundary_coordinates: virtualBoundaryCoords,
+    flow_direction_text: flowDirText,
     pipeline_coordinates: [
       [sinkLng, sinkLat],
       [Number(((sinkLng + outletLng) / 2).toFixed(6)), Number(((sinkLat + outletLat) / 2).toFixed(6))],
@@ -328,7 +473,7 @@ async function generateClientTerrainSimulation(
     elevation_drop_meters: elevFallM,
     slope_percent: slopePct,
     pipe_diameter_mm: 200,
-    recommended_pipe_material: 'Dual-Wall Corrugated HDPE Subsurface Pipe',
+    recommended_pipe_material: '200mm Corrugated HDPE Perforated Sub-surface Pipe',
     avg_trench_depth_m: avgTrenchDepthM,
     excavation_volume_m3: excavationVolM3,
     estimated_cost_inr: estimatedCostInr,

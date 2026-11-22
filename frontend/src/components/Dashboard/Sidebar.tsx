@@ -267,12 +267,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* ======================================================== */}
-        {/* TAB 1: PIPELINE DRAINAGE SYSTEM (Direct Sink -> Outlet)   */}
+        {/* TAB 1: PIPELINE DRAINAGE SYSTEM (100-Square Analysis)    */}
         {/* ======================================================== */}
         {activeTab === 'pipeline' && (
           <div className="space-y-3 animate-fade-in text-xs">
             {analysisData && pipe ? (
               <>
+                {/* 100-Square Partition Badge & Flow Direction */}
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-white/10 flex items-center justify-between text-[11px]">
+                  <div className="flex items-center gap-1.5 text-slate-300">
+                    <Table className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>100 Analysis Squares (1% each)</span>
+                  </div>
+                  <div className="font-mono font-bold text-cyan-300">
+                    {pipe.flow_direction_text || 'Dynamic Gradient'}
+                  </div>
+                </div>
+
                 {/* 1. SINKHOLE (KHADDHA) CARD */}
                 <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/35 space-y-2">
                   <div className="flex items-center justify-between">
@@ -281,7 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
                       </span>
-                      <span>Lowest Point (Sinkhole / Khaddha)</span>
+                      <span>Primary Sinkhole (Deepest Khaddha)</span>
                     </span>
                     <span className="text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-full border border-rose-500/30">
                       Waterlogging Risk
@@ -310,17 +321,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       {pipe.sink_point[1].toFixed(5)}°N, {pipe.sink_point[0].toFixed(5)}°E
                     </span>
                   </div>
+
+                  {/* Multiple Sinks List if detected */}
+                  {pipe.all_sinks && pipe.all_sinks.length > 1 && (
+                    <div className="pt-2 border-t border-rose-500/20 space-y-1.5">
+                      <div className="text-[10px] font-bold text-rose-300 uppercase tracking-wider">
+                        All Detected Low Sinks ({pipe.all_sinks.length} Points):
+                      </div>
+                      <div className="space-y-1">
+                        {pipe.all_sinks.map((s, idx) => (
+                          <div key={s.id || idx} className="p-1.5 rounded-lg bg-slate-950/60 border border-white/5 flex justify-between items-center text-[10.5px]">
+                            <span className="font-semibold text-slate-200">🔴 Sink #{idx + 1}</span>
+                            <span className="font-mono text-rose-300">{s.elevation_m.toFixed(1)}m (▼{s.depth_below_mean_m.toFixed(2)}m)</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* 2. VIRTUAL BOUNDARY & DISCHARGE OUTLET */}
+                {/* 2. NATURAL PERIMETER DISCHARGE OUTLET (NO VIRTUAL BOUNDARY) */}
                 <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-emerald-300 flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-neon-green" />
-                      <span>Natural Discharge Outlet</span>
+                      <span>Natural Perimeter Discharge Outlet</span>
                     </span>
                     <span className="text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      30m Virtual Perimeter
+                      Field Border Edge
                     </span>
                   </div>
 
@@ -332,16 +360,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     </div>
                     <div className="p-2 rounded-xl bg-slate-950/70 border border-white/5 space-y-0.5">
-                      <div className="text-slate-400 text-[10px]">Natural Head / Fall:</div>
+                      <div className="text-slate-400 text-[10px]">Natural Gravity Head:</div>
                       <div className="font-mono font-bold text-cyan-300 text-sm">
-                        {pipe.elevation_drop_meters.toFixed(2)} m drop
+                        {pipe.elevation_drop_meters.toFixed(2)} m fall
                       </div>
-                      <div className="text-[9px] text-emerald-400 font-semibold">100% Gravity Runoff</div>
+                      <div className="text-[9px] text-emerald-400 font-semibold">100% Gravity Drainage</div>
                     </div>
                   </div>
 
                   <div className="p-2 rounded-lg bg-slate-950/40 border border-white/5 text-[10px] font-mono text-slate-300 flex justify-between">
-                    <span className="text-slate-400">Outlet Location:</span>
+                    <span className="text-slate-400">Perimeter Outlet Point:</span>
                     <span className="text-emerald-300 font-bold">
                       {pipe.outlet_point[1].toFixed(5)}°N, {pipe.outlet_point[0].toFixed(5)}°E
                     </span>

@@ -510,58 +510,52 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       });
 
       // ========================================================
-      // PIPELINE DRAINAGE SYSTEM: Virtual Boundary, Sinkhole, Outlet & Pipe
+      // PIPELINE DRAINAGE SYSTEM: 100-Square Analysis, Sinks & Perimeter Outlet
       // ========================================================
       if (analysisData.pipeline_drainage) {
         const pipe = analysisData.pipeline_drainage;
 
-        // 1. Render 30m Virtual Boundary
-        if (pipe.virtual_boundary_coordinates && pipe.virtual_boundary_coordinates.length >= 3) {
-          const vCoords = pipe.virtual_boundary_coordinates.map((pt) => [pt[1], pt[0]]);
-          const vPolygon = L.polygon(vCoords, {
-            color: '#F59E0B', // Amber
-            weight: 2,
-            fillColor: '#F59E0B',
-            fillOpacity: 0.05,
-            dashArray: '6, 6',
-          });
-          vPolygon.bindTooltip('🛡️ 30m Virtual Boundary Perimeter', {
-            permanent: false,
-            direction: 'top',
-            className: 'ditch-label-tooltip',
-          });
-          routesGroup.addLayer(vPolygon);
-        }
-
-        // 2. Render Lowest Point (Sinkhole / Khaddha) Beacon
+        // 1. Render Primary & Multiple Sinks (Khaddhe)
         if (showSinkMarkers) {
-          const sinkIcon = L.divIcon({
-            className: 'sink-radar-pin',
-            html: `
-              <div style="position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
-                <div style="position: absolute; width: 44px; height: 44px; border: 2px solid #EF4444; border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-                <div style="position: relative; width: 16px; height: 16px; background: #EF4444; border: 2.5px solid #FFFFFF; border-radius: 50%; box-shadow: 0 0 14px #EF4444; z-index: 2;"></div>
-                <div style="position: absolute; top: -26px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: rgba(15,23,42,0.95); border: 1.5px solid #EF4444; color: #FCA5A5; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; box-shadow: 0 4px 12px rgba(0,0,0,0.7); z-index: 3;">
-                  🔴 SINKHOLE: ${pipe.sink_elevation_m.toFixed(1)}m (▼${pipe.sink_depth_below_mean_m.toFixed(2)}m)
+          const sinksToRender = pipe.all_sinks && pipe.all_sinks.length > 0
+            ? pipe.all_sinks
+            : [{
+                id: 'sink-1',
+                coordinates: pipe.sink_point,
+                elevation_m: pipe.sink_elevation_m,
+                depth_below_mean_m: pipe.sink_depth_below_mean_m,
+                severity: 'Critical Depression',
+              }];
+
+          sinksToRender.forEach((s, sIdx) => {
+            const sinkIcon = L.divIcon({
+              className: 'sink-radar-pin',
+              html: `
+                <div style="position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
+                  <div style="position: absolute; width: 44px; height: 44px; border: 2px solid #EF4444; border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+                  <div style="position: relative; width: 16px; height: 16px; background: #EF4444; border: 2.5px solid #FFFFFF; border-radius: 50%; box-shadow: 0 0 14px #EF4444; z-index: 2;"></div>
+                  <div style="position: absolute; top: -26px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: rgba(15,23,42,0.95); border: 1.5px solid #EF4444; color: #FCA5A5; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; box-shadow: 0 4px 12px rgba(0,0,0,0.7); z-index: 3;">
+                    🔴 SINK #${sIdx + 1}: ${s.elevation_m.toFixed(1)}m (▼${s.depth_below_mean_m.toFixed(2)}m)
+                  </div>
                 </div>
+              `,
+              iconSize: [50, 50],
+              iconAnchor: [25, 25],
+            });
+            const sinkMarker = L.marker([s.coordinates[1], s.coordinates[0]], { icon: sinkIcon });
+            sinkMarker.bindPopup(`
+              <div class="p-2 space-y-1.5 text-xs">
+                <div class="font-bold text-rose-400">🔴 Field Depression (Sinkhole #${sIdx + 1})</div>
+                <div class="text-slate-200">Elevation: <strong>${s.elevation_m.toFixed(2)} m MSL</strong></div>
+                <div class="text-rose-300 font-semibold">Depression Depth: ▼ ${s.depth_below_mean_m.toFixed(2)} m below average</div>
+                <div class="text-slate-400 text-[10px]">Natural pooling sink detected from 100-cell spatial grid analysis.</div>
               </div>
-            `,
-            iconSize: [50, 50],
-            iconAnchor: [25, 25],
+            `);
+            sinksGroup.addLayer(sinkMarker);
           });
-          const sinkMarker = L.marker([pipe.sink_point[1], pipe.sink_point[0]], { icon: sinkIcon });
-          sinkMarker.bindPopup(`
-            <div class="p-2 space-y-1.5 text-xs">
-              <div class="font-bold text-rose-400">🔴 Lowest Field Depression (Sinkhole)</div>
-              <div class="text-slate-200">Sea-Level Elevation: <strong>${pipe.sink_elevation_m.toFixed(2)} m MSL</strong></div>
-              <div class="text-rose-300 font-semibold">Depression Depth: ▼ ${pipe.sink_depth_below_mean_m.toFixed(2)} m below average</div>
-              <div class="text-slate-400 text-[10px]">Natural pooling sink. Direct gravity pipeline intake.</div>
-            </div>
-          `);
-          sinksGroup.addLayer(sinkMarker);
         }
 
-        // 3. Render Discharge Outlet on Virtual Boundary
+        // 2. Render Natural Discharge Outlet directly on Field Perimeter Border
         const outletIcon = L.divIcon({
           className: 'outlet-radar-pin',
           html: `
@@ -569,7 +563,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
               <div style="position: absolute; width: 44px; height: 44px; border: 2px solid #10B981; border-radius: 50%; animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
               <div style="position: relative; width: 16px; height: 16px; background: #10B981; border: 2.5px solid #FFFFFF; border-radius: 50%; box-shadow: 0 0 14px #10B981; z-index: 2;"></div>
               <div style="position: absolute; top: -26px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: rgba(15,23,42,0.95); border: 1.5px solid #10B981; color: #6EE7B7; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; box-shadow: 0 4px 12px rgba(0,0,0,0.7); z-index: 3;">
-                🟢 OUTLET: ${pipe.outlet_elevation_m.toFixed(1)}m
+                🟢 PERIMETER OUTLET: ${pipe.outlet_elevation_m.toFixed(1)}m
               </div>
             </div>
           `,
@@ -579,15 +573,15 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         const outletMarker = L.marker([pipe.outlet_point[1], pipe.outlet_point[0]], { icon: outletIcon });
         outletMarker.bindPopup(`
           <div class="p-2 space-y-1.5 text-xs">
-            <div class="font-bold text-emerald-400">🟢 Gravity Discharge Outlet (Perimeter)</div>
+            <div class="font-bold text-emerald-400">🟢 Natural Perimeter Discharge Outlet</div>
             <div class="text-slate-200">Elevation: <strong>${pipe.outlet_elevation_m.toFixed(2)} m MSL</strong></div>
-            <div class="text-emerald-300">Natural Elevation Head: <strong>${pipe.elevation_drop_meters.toFixed(2)} m drop</strong></div>
-            <div class="text-slate-400 text-[10px]">Located on 30m outer virtual perimeter boundary.</div>
+            <div class="text-emerald-300">Natural Gravity Head: <strong>${pipe.elevation_drop_meters.toFixed(2)} m drop</strong></div>
+            <div class="text-slate-400 text-[10px]">Located on field boundary border where surface water naturally escapes.</div>
           </div>
         `);
         routesGroup.addLayer(outletMarker);
 
-        // 4. Render Direct Pipeline Polyline
+        // 3. Render Direct HDPE Pipeline Polyline
         const pipeLatLngs = pipe.pipeline_coordinates.map((pt) => [pt[1], pt[0]]);
         const glowLine = L.polyline(pipeLatLngs, {
           color: '#00F0FF',

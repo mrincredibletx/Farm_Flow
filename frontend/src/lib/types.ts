@@ -84,13 +84,23 @@ export interface AIAdvisoryResult {
   full_text?: string;
 }
 
+export interface SinkholeDetail {
+  id: string;
+  coordinates: [number, number]; // [lng, lat]
+  elevation_m: number;
+  depth_below_mean_m: number;
+  severity: string;
+}
+
 export interface PipelineDrainageSystem {
   sink_point: [number, number]; // [lng, lat]
   sink_elevation_m: number;
   sink_depth_below_mean_m: number;
-  outlet_point: [number, number]; // [lng, lat]
+  all_sinks?: SinkholeDetail[];
+  outlet_point: [number, number]; // [lng, lat] (Field boundary perimeter outlet)
   outlet_elevation_m: number;
-  virtual_boundary_coordinates: [number, number][]; // [[lng, lat], ...]
+  flow_direction_text?: string;
+  virtual_boundary_coordinates?: [number, number][]; // Optional / deprecated
   pipeline_coordinates: [number, number][]; // [[lng, lat], [lng, lat]]
   length_meters: number;
   elevation_drop_meters: number;

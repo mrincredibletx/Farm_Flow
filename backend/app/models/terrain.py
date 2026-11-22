@@ -88,9 +88,11 @@ class PipelineDrainageSystem(BaseModel):
     sink_point: List[float]  # [lng, lat]
     sink_elevation_m: float
     sink_depth_below_mean_m: float
+    all_sinks: Optional[List[Dict[str, Any]]] = None
     outlet_point: List[float]  # [lng, lat]
     outlet_elevation_m: float
-    virtual_boundary_coordinates: List[List[float]]  # [[lng, lat], ...]
+    flow_direction_text: Optional[str] = None
+    virtual_boundary_coordinates: Optional[List[List[float]]] = None
     pipeline_coordinates: List[List[float]]  # [[lng, lat], [lng, lat]]
     length_meters: float
     elevation_drop_meters: float
