@@ -483,9 +483,8 @@ export const FieldMap: React.FC<FieldMapProps> = ({
 
         circle.bindPopup(`
           <div class="p-1 space-y-1.5 text-xs">
-            <div class="font-bold flex items-center gap-1.5 ${
-              severity >= 0.7 ? 'text-rose-400' : severity >= 0.35 ? 'text-amber-400' : 'text-emerald-400'
-            }">
+            <div class="font-bold flex items-center gap-1.5 ${severity >= 0.7 ? 'text-rose-400' : severity >= 0.35 ? 'text-amber-400' : 'text-emerald-400'
+          }">
               <span>${severity >= 0.7 ? 'Severe Ponding Sink' : severity >= 0.35 ? 'Moderate Risk (Sluggish)' : 'Low Risk (Good Runoff)'}</span>
             </div>
             <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
@@ -720,11 +719,10 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center p-1 glass-panel-elevated rounded-2xl border border-cyan-500/30 shadow-2xl backdrop-blur-md">
         <button
           onClick={() => onToggleMapMode('drainage')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-            mapMode === 'drainage'
-              ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/50 shadow-neon-cyan'
-              : 'text-slate-400 hover:text-white'
-          }`}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${mapMode === 'drainage'
+            ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/50 shadow-neon-cyan'
+            : 'text-slate-400 hover:text-white'
+            }`}
         >
           <Navigation className="w-3.5 h-3.5" />
           <span>Drainage & Sinks</span>
@@ -732,11 +730,10 @@ export const FieldMap: React.FC<FieldMapProps> = ({
 
         <button
           onClick={() => onToggleMapMode('grading')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-            mapMode === 'grading'
-              ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/50 shadow-sm'
-              : 'text-slate-400 hover:text-white'
-          }`}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${mapMode === 'grading'
+            ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/50 shadow-sm'
+            : 'text-slate-400 hover:text-white'
+            }`}
         >
           <Scissors className="w-3.5 h-3.5 text-rose-400" />
           <span>Cut / Fill Land Grading</span>
@@ -751,11 +748,10 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             profilePointsRef.current = [];
             layersRef.current.profileLineLayer.clearLayers();
           }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-            isDrawingProfile
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 animate-pulse'
-              : 'text-slate-300 hover:text-white hover:bg-white/10'
-          }`}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${isDrawingProfile
+            ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 animate-pulse'
+            : 'text-slate-300 hover:text-white hover:bg-white/10'
+            }`}
           title="Click 2 points on field to draw an Elevation Cross-Section"
         >
           <TrendingDown className="w-3.5 h-3.5 text-amber-400" />
@@ -891,31 +887,28 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         )}
         <button
           onClick={() => setActiveBaseMap('satellite')}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-            activeBaseMap === 'satellite'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'satellite'
+            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
+            : 'text-slate-400 hover:text-slate-200'
+            }`}
         >
           Satellite
         </button>
         <button
           onClick={() => setActiveBaseMap('dark')}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-            activeBaseMap === 'dark'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'dark'
+            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
+            : 'text-slate-400 hover:text-slate-200'
+            }`}
         >
           Dark
         </button>
         <button
           onClick={() => setActiveBaseMap('osm')}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-            activeBaseMap === 'osm'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'osm'
+            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
+            : 'text-slate-400 hover:text-slate-200'
+            }`}
         >
           Street
         </button>
