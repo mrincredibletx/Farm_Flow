@@ -1,10 +1,17 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Smart Agricultural Drainage System | Phase I MVP',
+  title: 'Farm Flow | Smart Agricultural Drainage System',
   description:
-    'Terrain intelligence and waterlogging vulnerability detection system for agricultural fields. Developed by Rakesh Bangra (B.Tech CSE, UEM Jaipur).',
+    'Terrain intelligence and precision agricultural drainage system. Developed by Rakesh Bangra & Sampat Singh Sekhawat (UEM Jaipur).',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -14,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-brand-void text-slate-100 min-h-screen overflow-hidden antialiased">
+      <body className="bg-brand-void text-slate-100 min-h-screen overflow-hidden antialiased select-none">
         {children}
       </body>
     </html>

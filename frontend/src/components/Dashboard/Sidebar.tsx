@@ -76,70 +76,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="w-full lg:w-96 glass-panel border-r border-white/10 flex flex-col h-full overflow-hidden z-20 select-none">
       {/* Phase II Feature Tab Bar */}
-      <div className="flex border-b border-white/10 bg-slate-950/40 text-[11px] p-1 gap-1">
+      <div className="flex border-b border-white/10 bg-slate-950/40 text-[11px] p-1 gap-1 overflow-x-auto scrollbar-none flex-nowrap">
         <button
           onClick={() => setActiveTab('hydrology')}
-          className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
+          className={`flex-1 min-w-[70px] py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 shrink-0 ${
             activeTab === 'hydrology'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Layers className="w-3 h-3" />
+          <Layers className="w-3 h-3 shrink-0" />
           <span>Hydrology</span>
         </button>
 
         <button
           onClick={() => setActiveTab('drainage')}
-          className={`flex-1 py-1.5 px-1.5 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
+          className={`flex-1 min-w-[70px] py-1.5 px-1.5 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 shrink-0 ${
             activeTab === 'drainage'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Navigation className="w-3 h-3" />
+          <Navigation className="w-3 h-3 shrink-0" />
           <span>A* Ditching</span>
         </button>
 
         <button
           onClick={() => setActiveTab('grading')}
-          className={`flex-1 py-1.5 px-1.5 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
+          className={`flex-1 min-w-[65px] py-1.5 px-1.5 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 shrink-0 ${
             activeTab === 'grading'
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Scissors className="w-3 h-3 text-rose-400" />
+          <Scissors className="w-3 h-3 text-rose-400 shrink-0" />
           <span>Cut/Fill</span>
         </button>
 
         <button
           onClick={() => setActiveTab('simulator')}
-          className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
+          className={`flex-1 min-w-[65px] py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 shrink-0 ${
             activeTab === 'simulator'
               ? 'bg-rose-500/20 text-rose-300 border border-rose-400/30'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <CloudRain className="w-3 h-3" />
+          <CloudRain className="w-3 h-3 shrink-0" />
           <span>ML Risk</span>
         </button>
 
         <button
           onClick={() => setActiveTab('advisory')}
-          className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 ${
+          className={`flex-1 min-w-[70px] py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1 shrink-0 ${
             activeTab === 'advisory'
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Bot className="w-3 h-3" />
+          <Bot className="w-3 h-3 shrink-0" />
           <span>Gemini AI</span>
         </button>
       </div>
 
       {/* Main Scrollable Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 lg:pb-4">
         {/* Campus & Device GPS Location Card */}
         <div className="p-3 rounded-xl bg-slate-900/60 border border-cyan-500/20 space-y-2">
           <div className="flex items-center justify-between text-xs">

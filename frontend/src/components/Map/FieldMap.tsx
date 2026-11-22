@@ -716,30 +716,32 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
       {/* Mode Switcher Pill (Top Center) - CutSheetRx Style */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center p-1 glass-panel-elevated rounded-2xl border border-cyan-500/30 shadow-2xl backdrop-blur-md">
+      <div className="absolute top-12 sm:top-3.5 left-1/2 -translate-x-1/2 z-20 flex items-center p-0.5 sm:p-1 glass-panel-elevated rounded-2xl border border-cyan-500/30 shadow-2xl backdrop-blur-md max-w-[95vw] overflow-x-auto select-none">
         <button
           onClick={() => onToggleMapMode('drainage')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${mapMode === 'drainage'
+          className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all shrink-0 ${mapMode === 'drainage'
             ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/50 shadow-neon-cyan'
             : 'text-slate-400 hover:text-white'
             }`}
         >
-          <Navigation className="w-3.5 h-3.5" />
-          <span>Drainage & Sinks</span>
+          <Navigation className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+          <span className="hidden sm:inline">Drainage &amp; Sinks</span>
+          <span className="sm:hidden">Drainage</span>
         </button>
 
         <button
           onClick={() => onToggleMapMode('grading')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${mapMode === 'grading'
+          className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all shrink-0 ${mapMode === 'grading'
             ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/50 shadow-sm'
             : 'text-slate-400 hover:text-white'
             }`}
         >
-          <Scissors className="w-3.5 h-3.5 text-rose-400" />
-          <span>Cut / Fill Land Grading</span>
+          <Scissors className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-400" />
+          <span className="hidden sm:inline">Cut / Fill Land Grading</span>
+          <span className="sm:hidden">Grading</span>
         </button>
 
-        <span className="text-slate-600 text-xs px-1">|</span>
+        <span className="text-slate-600 text-xs px-0.5 sm:px-1">|</span>
 
         {/* Draw Elevation Profile Button */}
         <button
@@ -748,14 +750,15 @@ export const FieldMap: React.FC<FieldMapProps> = ({
             profilePointsRef.current = [];
             layersRef.current.profileLineLayer.clearLayers();
           }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${isDrawingProfile
+          className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-medium transition-all shrink-0 ${isDrawingProfile
             ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 animate-pulse'
             : 'text-slate-300 hover:text-white hover:bg-white/10'
             }`}
           title="Click 2 points on field to draw an Elevation Cross-Section"
         >
-          <TrendingDown className="w-3.5 h-3.5 text-amber-400" />
-          <span>{isDrawingProfile ? 'Click 2 Points...' : 'Cross-Section Profile'}</span>
+          <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+          <span className="hidden sm:inline">{isDrawingProfile ? 'Click 2 Points...' : 'Cross-Section Profile'}</span>
+          <span className="sm:hidden">{isDrawingProfile ? '2 Pts' : 'Profile'}</span>
         </button>
       </div>
 
@@ -874,20 +877,20 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       )}
 
       {/* Floating Basemap Switcher & Device Geolocation */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-1 p-1 glass-panel rounded-xl shadow-xl">
+      <div className="absolute top-2 sm:top-3.5 right-2 sm:right-4 z-20 flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 glass-panel rounded-xl shadow-xl">
         {onLocateDevice && (
           <button
             onClick={onLocateDevice}
-            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/20 hover:bg-cyan-500/35 text-cyan-300 border border-cyan-400/50 flex items-center gap-1.5 transition-all shadow-neon-cyan mr-1"
+            className="px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold bg-cyan-500/20 hover:bg-cyan-500/35 text-cyan-300 border border-cyan-400/50 flex items-center gap-1 sm:gap-1.5 transition-all shadow-neon-cyan"
             title="Locate My Device (GPS)"
           >
-            <Crosshair className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span>My Location</span>
+            <Crosshair className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400 animate-pulse" />
+            <span className="hidden sm:inline">My Location</span>
           </button>
         )}
         <button
           onClick={() => setActiveBaseMap('satellite')}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'satellite'
+          className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${activeBaseMap === 'satellite'
             ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
             : 'text-slate-400 hover:text-slate-200'
             }`}
@@ -896,7 +899,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         </button>
         <button
           onClick={() => setActiveBaseMap('dark')}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'dark'
+          className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${activeBaseMap === 'dark'
             ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
             : 'text-slate-400 hover:text-slate-200'
             }`}
@@ -905,7 +908,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
         </button>
         <button
           onClick={() => setActiveBaseMap('osm')}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeBaseMap === 'osm'
+          className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${activeBaseMap === 'osm'
             ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
             : 'text-slate-400 hover:text-slate-200'
             }`}

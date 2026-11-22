@@ -46,7 +46,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSelectLocation }) => {
   };
 
   return (
-    <div className="relative w-full max-w-md z-30">
+    <div className="relative w-full z-30">
       <form onSubmit={handleSearch} className="relative flex items-center">
         <input
           type="text"
@@ -55,20 +55,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSelectLocation }) => {
             setQuery(e.target.value);
             if (e.target.value.length === 0) setIsOpen(false);
           }}
-          placeholder="Search location (e.g. Jaipur, Ludhiana, Karnal)..."
-          className="w-full px-4 py-2.5 pl-10 pr-10 text-sm glass-input rounded-xl text-slate-100 placeholder-slate-400 focus:outline-none"
+          placeholder="Search location..."
+          className="w-full px-3 sm:px-4 py-1.5 sm:py-2.5 pl-8 sm:pl-10 pr-7 sm:pr-10 text-xs sm:text-sm glass-input rounded-xl text-slate-100 placeholder-slate-400 focus:outline-none"
         />
-        <Search className="w-4 h-4 absolute left-3.5 text-cyan-400" />
+        <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-2.5 sm:left-3.5 text-cyan-400" />
         
         {loading ? (
-          <Loader2 className="w-4 h-4 absolute right-3 text-cyan-400 animate-spin" />
+          <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute right-2.5 sm:right-3 text-cyan-400 animate-spin" />
         ) : query ? (
           <button
             type="button"
             onClick={clear}
-            className="absolute right-3 text-slate-400 hover:text-slate-200"
+            className="absolute right-2.5 sm:right-3 text-slate-400 hover:text-slate-200"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         ) : null}
       </form>
