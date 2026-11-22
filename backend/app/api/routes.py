@@ -62,9 +62,9 @@ async def get_sample_fields():
         "fields": [
             {
                 "id": "uem-jaipur-demo",
-                "name": "UEM Jaipur Guard House & Agritech Plot",
-                "location": "UEM Jaipur (PIN 303807), Sikar Road, Jaipur",
-                "description": "Agricultural research parcel adjacent to the UEM Jaipur Guard House (PIN 303807), Sikar Road.",
+                "name": "UEM Jaipur Agritech Research Plot",
+                "location": "Jaipur, Rajasthan",
+                "description": "Agricultural research parcel at UEM Jaipur campus with natural drainage flow.",
                 "center": [75.7011, 27.2140], # [lng, lat]
                 "zoom": 17,
                 "coordinates": [

@@ -145,15 +145,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-200 flex items-center gap-1.5">
               <Compass className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Default Landing: UEM Jaipur</span>
+              <span>Map Focus</span>
             </span>
             <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
-              ● 303807 Guard House
+              Active Point
             </span>
           </div>
 
           <div className="flex items-center justify-between text-[11px] p-2 rounded-lg bg-slate-950/60 border border-white/5">
-            <span className="text-slate-400">Campus Entry:</span>
+            <span className="text-slate-400">Coordinates:</span>
             <span className="font-mono text-cyan-300 font-bold">
               27.21400° N, 75.70110° E
             </span>
@@ -165,7 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold glass-panel hover:bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 flex items-center justify-center gap-2 transition-all shadow-sm"
             >
               <Compass className="w-3.5 h-3.5" />
-              <span>Center to UEM Guard House (303807)</span>
+              <span>Center to Location</span>
             </button>
           )}
 

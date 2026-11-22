@@ -51,13 +51,13 @@ export default function Home() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<TerrainAnalysisResponse | null>(null);
-  // Default Landing Location: UEM Jaipur Guard House, PIN 303807
-  const UEM_JAIPUR_GUARD_HOUSE = {
+  // Default Landing Location: UEM Jaipur (27.2140, 75.7011)
+  const UEM_JAIPUR_LOCATION = {
     lat: 27.2140,
     lng: 75.7011,
   };
 
-  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(UEM_JAIPUR_GUARD_HOUSE);
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(UEM_JAIPUR_LOCATION);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [overlayOpacity, setOverlayOpacity] = useState(0.8);
   const [showSinkMarkers, setShowSinkMarkers] = useState(true);

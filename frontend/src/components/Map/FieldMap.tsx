@@ -107,35 +107,6 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     // Custom Zoom control at bottom right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // Default Landmark Pin: UEM Jaipur Guard House (303807)
-    const uemIcon = L.divIcon({
-      className: 'uem-guard-house-pin',
-      html: `
-        <div style="position: relative; display: flex; flex-direction: column; align-items: center; pointer-events: auto;">
-          <div style="background: rgba(15, 23, 42, 0.95); color: #38BDF8; font-weight: 800; font-size: 11px; padding: 4px 10px; border-radius: 8px; border: 1.5px solid #00F0FF; box-shadow: 0 4px 16px rgba(0, 240, 255, 0.4); white-space: nowrap; margin-bottom: 5px; display: flex; align-items: center; gap: 4px;">
-            <span>🏛️</span>
-            <span>UEM Jaipur Guard House</span>
-            <span style="background: #0284C7; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 4px;">303807</span>
-          </div>
-          <div style="width: 14px; height: 14px; border-radius: 50%; background: #00F0FF; border: 2.5px solid #FFFFFF; box-shadow: 0 0 16px #00F0FF;"></div>
-        </div>
-      `,
-      iconSize: [210, 44],
-      iconAnchor: [105, 38],
-    });
-    const uemMarker = L.marker([initialLat, initialLng], { icon: uemIcon }).addTo(map);
-    uemMarker.bindPopup(`
-      <div class="p-1.5 text-xs text-slate-200">
-        <div class="font-bold text-cyan-400 flex items-center gap-1.5 text-sm">
-          <span>🏛️ UEM Jaipur Guard House</span>
-        </div>
-        <div class="text-[11px] text-emerald-400 font-semibold mt-0.5">PIN Code: 303807</div>
-        <div class="text-[10px] text-slate-300 mt-1">University of Engineering & Management, Gurukul Campus, Sikar Road, Near Udaipuria Mod, Jaipur, Rajasthan 303807</div>
-        <div class="text-[11px] text-cyan-300 font-mono mt-1 font-bold">27.2140° N, 75.7011° E</div>
-        <p class="text-[10px] text-slate-400 mt-1">Default landing location initialized. Click <b>"Draw Boundary"</b> to map your agricultural land.</p>
-      </div>
-    `);
-
     // Initial Satellite Tile layer (Esri World Imagery)
     const satTiles = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -153,6 +124,26 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     layersRef.current.flowArrowsLayer = L.layerGroup().addTo(map);
     layersRef.current.profileLineLayer = L.layerGroup().addTo(map);
     layersRef.current.userLocationLayer = L.layerGroup().addTo(map);
+
+    // Initial target point at default location (UEM Jaipur: 27.2140, 75.7011) - clean pointer with no name label
+    const defaultFocusIcon = L.divIcon({
+      className: 'location-focus-pin',
+      html: `
+        <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(0, 240, 255, 0.25); border: 1.5px solid rgba(0, 240, 255, 0.7); animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="width: 14px; height: 14px; border-radius: 50%; background: #00F0FF; border: 2.5px solid #FFFFFF; box-shadow: 0 0 14px #00F0FF;"></div>
+        </div>
+      `,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+    const defaultMarker = L.marker([initialLat, initialLng], { icon: defaultFocusIcon });
+    defaultMarker.bindPopup(`
+      <div class="p-1 text-xs font-mono text-cyan-300 font-bold">
+        ${initialLat.toFixed(4)}° N, ${initialLng.toFixed(4)}° E
+      </div>
+    `);
+    layersRef.current.userLocationLayer.addLayer(defaultMarker);
 
     // Mouse Move listener for real-time elevation & GPS HUD
     map.on('mousemove', (e: any) => {
@@ -256,11 +247,11 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     if (layersRef.current.userLocationLayer) {
       layersRef.current.userLocationLayer.clearLayers();
       const gpsIcon = L.divIcon({
-        className: 'user-gps-location-pin',
+        className: 'location-focus-pin',
         html: `
           <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
-            <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(0, 240, 255, 0.25); border: 1.5px solid rgba(0, 240, 255, 0.6); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-            <div style="width: 14px; height: 14px; border-radius: 50%; background: #00F0FF; border: 2.5px solid #FFFFFF; box-shadow: 0 0 16px #00F0FF;"></div>
+            <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(0, 240, 255, 0.25); border: 1.5px solid rgba(0, 240, 255, 0.7); animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: #00F0FF; border: 2.5px solid #FFFFFF; box-shadow: 0 0 14px #00F0FF;"></div>
           </div>
         `,
         iconSize: [36, 36],
@@ -268,13 +259,8 @@ export const FieldMap: React.FC<FieldMapProps> = ({
       });
       const marker = L.marker([selectedLocation.lat, selectedLocation.lng], { icon: gpsIcon });
       marker.bindPopup(`
-        <div class="p-1 text-xs">
-          <div class="font-bold text-cyan-400 flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-            <span>YOUR DEVICE LOCATION</span>
-          </div>
-          <div class="text-[11px] text-slate-300 font-mono mt-1">${selectedLocation.lat.toFixed(5)}, ${selectedLocation.lng.toFixed(5)}</div>
-          <p class="text-[10px] text-slate-400 mt-1">Use "Draw Boundary" to map your field polygon directly over this satellite imagery.</p>
+        <div class="p-1 text-xs font-mono text-cyan-300 font-bold">
+          ${selectedLocation.lat.toFixed(5)}° N, ${selectedLocation.lng.toFixed(5)}° E
         </div>
       `);
       layersRef.current.userLocationLayer.addLayer(marker);
