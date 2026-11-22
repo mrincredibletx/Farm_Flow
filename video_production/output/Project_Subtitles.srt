@@ -1,0 +1,167 @@
+1
+00:00:00,000 --> 00:00:04,200
+When water becomes the single greatest threat to agriculture,
+
+2
+00:00:04,299 --> 00:00:08,800
+billions of dollars in global crop yields are lost overnight.
+
+3
+00:00:08,900 --> 00:00:12,199
+Across millions of agricultural fields worldwide,
+
+4
+00:00:12,300 --> 00:00:16,800
+unpredictable rainfall and poorly drained terrain trigger severe waterlogging,
+
+5
+00:00:16,899 --> 00:00:20,949
+suffocating root systems and transforming fertile soil into unproductive floodplains.
+
+6
+00:00:21,750 --> 00:00:27,949
+Traditional drainage planning relies on slow, expensive manual surveying and guesswork.
+
+7
+00:00:28,050 --> 00:00:32,149
+Subtle elevation depressions, invisible to the human eye,
+
+8
+00:00:32,250 --> 00:00:36,549
+trap surface runoff, forming stagnant hydrological sinks.
+
+9
+00:00:36,649 --> 00:00:41,549
+Without precision topographic modeling, surface runoff flows uncontrollably,
+
+10
+00:00:41,649 --> 00:00:46,280
+accelerating topsoil erosion and devastating seasonal harvests.
+
+11
+00:00:47,079 --> 00:00:52,879
+Introducing the Smart Agricultural Drainage & Precision Land Grading System.
+
+12
+00:00:52,979 --> 00:00:58,280
+A unified, AI-driven geospatial intelligence platform developed at UEM Jaipur,
+
+13
+00:00:58,379 --> 00:01:03,280
+engineered to transform satellite elevation data into actionable, millimeter-precise drainage networks
+
+14
+00:01:03,379 --> 00:01:06,709
+and optimal land-grading strategies.
+
+15
+00:01:07,509 --> 00:01:13,309
+By fusing high-resolution digital elevation models with Gaussian spatial filtering
+
+16
+00:01:13,409 --> 00:01:16,009
+and numerical gradient analysis,
+
+17
+00:01:16,109 --> 00:01:22,309
+the system constructs an interactive three-dimensional digital twin of any agricultural field.
+
+18
+00:01:22,409 --> 00:01:27,309
+Topographic curvature algorithms locate localized depression sinks
+
+19
+00:01:27,409 --> 00:01:31,009
+and identify natural watershed divide boundaries.
+
+20
+00:01:31,109 --> 00:01:36,009
+Gravitational flow vectors reveal the exact trajectory of surface runoff,
+
+21
+00:01:36,109 --> 00:01:41,309
+while a multi-catchment heuristic A* pathfinding engine autonomously computes
+
+22
+00:01:41,409 --> 00:01:44,009
+the mathematically optimal routes for agricultural drainage trenches,
+
+23
+00:01:44,109 --> 00:01:46,049
+minimizing excavation depth while maintaining continuous downhill flow.
+
+24
+00:01:46,849 --> 00:01:50,049
+Inside the live interactive dashboard,
+
+25
+00:01:50,149 --> 00:01:56,649
+farmers and agronomists can delineate field boundaries or select preset research plots with a single click.
+
+26
+00:01:56,750 --> 00:02:00,649
+The platform instantly analyzes ground elevation profiles
+
+27
+00:02:00,750 --> 00:02:06,349
+and highlights waterlogging vulnerability across critical, moderate, and well-drained zones.
+
+28
+00:02:06,449 --> 00:02:11,650
+Users can toggle between existing terrain and laser-graded design surfaces,
+
+29
+00:02:11,750 --> 00:02:15,049
+run real-time 3D rainfall inundation simulations,
+
+30
+00:02:15,150 --> 00:02:20,050
+model SCS curve number runoff kinetics under dynamic soil saturation,
+
+31
+00:02:20,149 --> 00:02:26,069
+and receive instant, crop-specific agronomic advisories powered by generative AI.
+
+32
+00:02:26,870 --> 00:02:32,370
+Under the hood, the system features a high-performance decoupled architecture.
+
+33
+00:02:32,469 --> 00:02:38,069
+A modern Next.js 14 frontend renders dynamic Three.js WebGL terrain meshes
+
+34
+00:02:38,170 --> 00:02:41,370
+alongside responsive Leaflet GIS maps.
+
+35
+00:02:41,469 --> 00:02:46,670
+The FastAPI Python backend powers high-throughput hydrological computing
+
+36
+00:02:46,770 --> 00:02:53,370
+using NumPy vectorization, SciPy spatial filters, and custom least-squares planar grading,
+
+37
+00:02:53,469 --> 00:02:59,770
+seamlessly integrated with Google Gemini AI for expert agronomic intelligence.
+
+38
+00:03:00,569 --> 00:03:06,069
+From uncontrolled inundation to automated, precision-guided drainage.
+
+39
+00:03:06,169 --> 00:03:11,069
+From manual surveying to autonomous geospatial intelligence.
+
+40
+00:03:11,169 --> 00:03:17,069
+This is the future of sustainable farming and climate-resilient water management.
+
+41
+00:03:17,169 --> 00:03:22,370
+Smarter Terrain. Intelligent Drainage. Better Agriculture.
+
+42
+00:03:22,469 --> 00:03:28,649
+A Final-Year B.Tech Capstone Project, University of Engineering & Management, Jaipur.

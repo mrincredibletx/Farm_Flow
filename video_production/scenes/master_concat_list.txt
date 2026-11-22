@@ -1,0 +1,7 @@
+file 'c:/Users/rkban/OneDrive/Desktop/sem 7/PROJECT/video_production/scenes/scene_01.mp4'
+file 'c:/Users/rkban/OneDrive/Desktop/sem 7/PROJECT/video_production/scenes/scene_02.mp4'
+file 'c:/Users/rkban/OneDrive/Desktop/sem 7/PROJECT/video_production/scenes/scene_03.mp4'
+file 'c:/Users/rkban/OneDrive/Desktop/sem 7/PROJECT/video_production/scenes/scene_04.mp4'
+file 'c:/Users/rkban/OneDrive/Desktop/sem 7/PROJECT/video_production/scenes/scene_05.mp4'
+file 'c:/Users/rkban/OneDrive/Desktop/sem 7/PROJECT/video_production/scenes/scene_06.mp4'
+file 'c:/Users/rkban/OneDrive/Desktop/sem 7/PROJECT/video_production/scenes/scene_07.mp4'
