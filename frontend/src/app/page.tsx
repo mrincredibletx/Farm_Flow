@@ -8,8 +8,8 @@ import { SearchBar } from '@/components/Map/SearchBar';
 import { MapLegend } from '@/components/Map/MapLegend';
 import { ElevationGridInspector } from '@/components/Dashboard/ElevationGridInspector';
 import { ElevationProfileDrawer } from '@/components/Map/ElevationProfileDrawer';
-import { analyzeTerrain } from '@/lib/api';
-import { TerrainAnalysisResponse, ElevationProfilePoint } from '@/lib/types';
+import { analyzeTerrain, VERIFIED_SAMPLE_FIELDS } from '@/lib/api';
+import { TerrainAnalysisResponse, ElevationProfilePoint, SampleField } from '@/lib/types';
 import { generateAgronomicPDFReport } from '@/lib/pdfExport';
 import { AlertCircle, X, Box, Map as MapIcon, Loader2, Sliders, PenTool, RotateCcw, Play } from 'lucide-react';
 
@@ -159,6 +159,17 @@ export default function Home() {
     setSelectedLocation({ lat, lng });
   };
 
+  const handleSelectSampleField = (field: SampleField) => {
+    setCoordinates(field.coordinates);
+    setSelectedLocation({ lat: field.center[1], lng: field.center[0] });
+    handleAnalyze(
+      field.coordinates,
+      field.soil_type || 'clay',
+      field.crop_type || 'Wheat',
+      65
+    );
+  };
+
   const handleDownloadPDF = () => {
     if (!analysisData) return;
     generateAgronomicPDFReport(analysisData);
@@ -191,6 +202,8 @@ export default function Home() {
             onLocateDevice={handleLocateDevice}
             onCenterUEM={handleCenterUEM}
             onOpenGridInspector={() => setIsGridInspectorOpen(true)}
+            sampleFields={VERIFIED_SAMPLE_FIELDS}
+            onSelectSampleField={handleSelectSampleField}
             onOpenElevationProfile={() => {
               if (profilePoints.length > 0) {
                 setIsProfileOpen(true);

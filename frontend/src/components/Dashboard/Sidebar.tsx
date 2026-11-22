@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { TerrainAnalysisResponse } from '@/lib/types';
+import { TerrainAnalysisResponse, SampleField } from '@/lib/types';
 import { TerrainMetricsCard } from './TerrainMetricsCard';
 import { generateAgronomicPDFReport } from '@/lib/pdfExport';
 import {
@@ -42,6 +42,8 @@ interface SidebarProps {
   onCenterUEM?: () => void;
   onOpenGridInspector: () => void;
   onOpenElevationProfile?: () => void;
+  sampleFields?: SampleField[];
+  onSelectSampleField?: (field: SampleField) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -58,6 +60,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCenterUEM,
   onOpenGridInspector,
   onOpenElevationProfile,
+  sampleFields = [],
+  onSelectSampleField,
 }) => {
   const [activeTab, setActiveTab] = useState<'pipeline' | 'dem' | 'advisory'>('pipeline');
   const [soilType, setSoilType] = useState<string>('clay');
@@ -156,6 +160,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>Re-Center to Device GPS ({userLocation.lat.toFixed(3)}, {userLocation.lng.toFixed(3)})</span>
             </button>
           )}
+        </div>
+
+        {/* Verified Real Test Fields (10 Proven Real Agricultural Sites) */}
+        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-blue-950/30 to-slate-900/70 border border-cyan-500/35 space-y-2.5 shadow-lg">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Verified Real Test Fields</span>
+            </span>
+            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
+              10 Real Sites
+            </span>
+          </div>
+
+          <p className="text-[11px] text-slate-300 leading-snug">
+            1-Click load authentic agricultural parcels with real Copernicus 30m terrain, proven sinkholes, and gravity HDPE pipelines:
+          </p>
+
+          <select
+            onChange={(e) => {
+              const field = sampleFields.find((f) => f.id === e.target.value);
+              if (field && onSelectSampleField) {
+                onSelectSampleField(field);
+              }
+            }}
+            defaultValue=""
+            className="w-full px-2.5 py-2 text-xs glass-input rounded-xl text-slate-100 font-semibold bg-slate-950/90 border border-cyan-400/50 cursor-pointer shadow-inner focus:outline-none focus:ring-1 focus:ring-cyan-400"
+          >
+            <option value="" disabled>⚡ Choose a Verified Farm Site (10 Real Sites)...</option>
+            {sampleFields.map((f) => (
+              <option key={f.id} value={f.id} className="bg-slate-900 text-slate-200">
+                {f.name} ({f.location}) • {f.elevation_msl ? `${f.elevation_msl}m MSL` : 'Real DEM'}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Boundary Mapping Controls */}

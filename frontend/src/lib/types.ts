@@ -166,6 +166,10 @@ export interface SampleField {
   center: [number, number]; // [lng, lat]
   zoom: number;
   coordinates: [number, number][]; // [[lng, lat], ...]
+  soil_type?: string;
+  crop_type?: string;
+  elevation_msl?: number;
+  terrain_feature?: string;
 }
 
 export interface SearchResult {
