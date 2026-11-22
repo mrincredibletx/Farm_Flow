@@ -71,7 +71,7 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     userLocationLayer: null,
   });
 
-  const [activeBaseMap, setActiveBaseMap] = useState<'dark' | 'satellite' | 'osm'>('satellite');
+  const [activeBaseMap, setActiveBaseMap] = useState<'google_hybrid' | 'google_terrain' | 'dark' | 'osm'>('google_hybrid');
   const [L, setL] = useState<any>(null);
   const [mouseElevation, setMouseElevation] = useState<{
     elev: number;
@@ -107,12 +107,13 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     // Custom Zoom control at bottom right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // Initial Satellite Tile layer (Esri World Imagery)
+    // Initial Satellite Tile layer (Google Maps Hybrid Satellite)
     const satTiles = L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
       {
-        attribution: '&copy; Esri World Imagery',
-        maxZoom: 19,
+        attribution: '&copy; Google Maps',
+        maxZoom: 21,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
       }
     ).addTo(map);
 
@@ -209,21 +210,31 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     }
 
     let newTileLayer;
-    if (activeBaseMap === 'dark') {
+    if (activeBaseMap === 'google_hybrid') {
+      newTileLayer = L.tileLayer(
+        'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        {
+          attribution: '&copy; Google Maps',
+          maxZoom: 21,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        }
+      );
+    } else if (activeBaseMap === 'google_terrain') {
+      newTileLayer = L.tileLayer(
+        'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+        {
+          attribution: '&copy; Google Maps Terrain',
+          maxZoom: 20,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        }
+      );
+    } else if (activeBaseMap === 'dark') {
       newTileLayer = L.tileLayer(
         'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
         {
           attribution: '&copy; CartoDB &copy; OpenStreetMap',
           maxZoom: 20,
           subdomains: 'abcd',
-        }
-      );
-    } else if (activeBaseMap === 'satellite') {
-      newTileLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        {
-          attribution: '&copy; Esri World Imagery',
-          maxZoom: 19,
         }
       );
     } else {
@@ -889,13 +900,22 @@ export const FieldMap: React.FC<FieldMapProps> = ({
           </button>
         )}
         <button
-          onClick={() => setActiveBaseMap('satellite')}
-          className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${activeBaseMap === 'satellite'
+          onClick={() => setActiveBaseMap('google_hybrid')}
+          className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${activeBaseMap === 'google_hybrid'
             ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
             : 'text-slate-400 hover:text-slate-200'
             }`}
         >
-          Satellite
+          Google Maps
+        </button>
+        <button
+          onClick={() => setActiveBaseMap('google_terrain')}
+          className={`px-1.5 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${activeBaseMap === 'google_terrain'
+            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40'
+            : 'text-slate-400 hover:text-slate-200'
+            }`}
+        >
+          Terrain
         </button>
         <button
           onClick={() => setActiveBaseMap('dark')}

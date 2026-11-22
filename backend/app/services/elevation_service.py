@@ -269,9 +269,12 @@ class ElevationService:
                         if data.get("status") == "OK":
                             results = data.get("results", [])
                             all_elevations.extend(float(r["elevation"]) for r in results)
+                            logger.info(f"Successfully fetched {len(results)} elevation points from Google Maps Elevation API.")
                         else:
+                            logger.warning(f"Google Maps Elevation API status: {data.get('status')} - {data.get('error_message')}")
                             return None
                     else:
+                        logger.warning(f"Google Maps Elevation API HTTP {resp.status_code}: {resp.text}")
                         return None
 
             if len(all_elevations) == len(points):
