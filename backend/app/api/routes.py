@@ -262,7 +262,8 @@ async def get_sample_fields():
 async def analyze_terrain(payload: TerrainRequest):
     try:
         coordinates = payload.coordinates
-        resolution = payload.grid_resolution or 20
+        # Exactly 10x10 = 100 spatial squares (each 1/100 of drawn area)
+        resolution = payload.grid_resolution or 10
 
         # Step 1: Compute Bounding Box
         bbox = elevation_service.compute_bounding_box(coordinates)

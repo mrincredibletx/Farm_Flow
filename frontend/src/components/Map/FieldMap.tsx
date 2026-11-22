@@ -445,8 +445,6 @@ export const FieldMap: React.FC<FieldMapProps> = ({
     // ==========================================
     if (mapMode === 'drainage' && analysisData.waterlogging_zones) {
       const zones = analysisData.waterlogging_zones;
-      const sampleCount = zones.length;
-      const pointRadius = sampleCount > 300 ? 10 : sampleCount > 150 ? 14 : 20;
 
       const detailsMap = new Map<string, any>();
       if (analysisData.zone_details) {
@@ -457,57 +455,87 @@ export const FieldMap: React.FC<FieldMapProps> = ({
 
       const isDivide = !!analysisData.metrics?.is_watershed_divide;
 
-      // Render waterlogging risk circles with clean transparency
-      zones.forEach(([lng, lat, severity]) => {
-        const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
-        const elevText = detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...';
+      // Render the 100 analysis squares (10x10 spatial grid cells, each 1/100th of field area)
+      const bbox = analysisData.bounding_box;
+      if (bbox) {
+        const dLng = (bbox.max_lng - bbox.min_lng) / 10;
+        const dLat = (bbox.max_lat - bbox.min_lat) / 10;
 
-        let fillColor = '#10B981';
-        let strokeColor = '#059669';
-        let fillOp = overlayOpacity * 0.15;
-        let strokeOp = 0.0;
-        let strokeWt = 0;
+        zones.forEach(([lng, lat, severity], idx) => {
+          const detail = detailsMap.get(`${lng.toFixed(5)}_${lat.toFixed(5)}`);
+          const elevText = detail ? `${detail.elevation.toFixed(2)} m` : 'Calculating...';
 
-        if (severity >= 0.70) {
-          fillColor = '#F43F5E';
-          strokeColor = '#BE123C';
-          fillOp = overlayOpacity * 0.65;
-          strokeOp = overlayOpacity * 0.85;
-          strokeWt = 1.0;
-        } else if (severity >= 0.35) {
-          fillColor = '#F59E0B';
-          strokeColor = '#D97706';
-          fillOp = overlayOpacity * 0.40;
-          strokeOp = overlayOpacity * 0.40;
-          strokeWt = 0.5;
-        }
+          let fillColor = '#10B981';
+          let borderColor = 'rgba(16, 185, 129, 0.45)';
+          let fillOp = overlayOpacity * 0.22;
 
-        const circle = L.circle([lat, lng], {
-          radius: pointRadius,
-          stroke: strokeWt > 0,
-          weight: strokeWt,
-          color: strokeColor,
-          opacity: strokeOp,
-          fillColor: fillColor,
-          fillOpacity: fillOp,
+          if (severity >= 0.70) {
+            fillColor = '#EF4444'; // Red for severe depression / sinkhole
+            borderColor = 'rgba(239, 68, 68, 0.75)';
+            fillOp = overlayOpacity * 0.65;
+          } else if (severity >= 0.35) {
+            fillColor = '#F59E0B'; // Amber for moderate ponding risk
+            borderColor = 'rgba(245, 158, 11, 0.55)';
+            fillOp = overlayOpacity * 0.40;
+          }
+
+          const cellBounds: [[number, number], [number, number]] = [
+            [lat - dLat * 0.48, lng - dLng * 0.48],
+            [lat + dLat * 0.48, lng + dLng * 0.48],
+          ];
+
+          const rect = L.rectangle(cellBounds, {
+            color: borderColor,
+            weight: 1,
+            fillColor: fillColor,
+            fillOpacity: fillOp,
+          });
+
+          rect.bindPopup(`
+            <div class="p-1 space-y-1.5 text-xs font-sans">
+              <div class="font-bold flex items-center gap-1.5 ${
+                severity >= 0.7 ? 'text-rose-400' : severity >= 0.35 ? 'text-amber-400' : 'text-emerald-400'
+              }">
+                <span>Square #${idx + 1} of 100: ${
+                severity >= 0.7 ? '🔴 Critical Waterlogging Sink' : severity >= 0.35 ? '🟡 Moderate Risk (Ponding)' : '🟢 Safe Natural Runoff'
+              }</span>
+              </div>
+              <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
+                <div>Elevation:</div>
+                <div class="font-mono text-cyan-300 text-right font-bold">${elevText}</div>
+                <div>Waterlogging Risk:</div>
+                <div class="font-mono text-right font-bold">${Math.round(severity * 100)}%</div>
+                <div>Area Fraction:</div>
+                <div class="font-mono text-right">1/100 (1%)</div>
+              </div>
+            </div>
+          `);
+          heatmapGroup.addLayer(rect);
         });
 
-        circle.bindPopup(`
-          <div class="p-1 space-y-1.5 text-xs">
-            <div class="font-bold flex items-center gap-1.5 ${severity >= 0.7 ? 'text-rose-400' : severity >= 0.35 ? 'text-amber-400' : 'text-emerald-400'
-          }">
-              <span>${severity >= 0.7 ? 'Severe Ponding Sink' : severity >= 0.35 ? 'Moderate Risk (Sluggish)' : 'Low Risk (Good Runoff)'}</span>
+        // Center Field Design Slope Indicator Pill Badge (CutSheetRx style from Image 2)
+        const centerLat = (bbox.min_lat + bbox.max_lat) / 2;
+        const centerLng = (bbox.min_lng + bbox.max_lng) / 2;
+        const slopeHeading = analysisData.cut_fill_analysis?.design_heading_degrees ?? 135;
+        const slopePct = analysisData.cut_fill_analysis?.design_slope_percent ?? 0.85;
+        const compassText = analysisData.cut_fill_analysis?.heading_compass ?? 'South-East';
+
+        const centerArrowIcon = L.divIcon({
+          className: 'center-slope-indicator',
+          html: `
+            <div style="background: rgba(15, 23, 42, 0.95); border: 2px solid #00F0FF; padding: 4px 12px; border-radius: 9999px; box-shadow: 0 4px 15px rgba(0,240,255,0.4); display: flex; align-items: center; gap: 7px; white-space: nowrap; transform: translate(-50%, -50%);">
+              <span style="display: inline-block; transform: rotate(${slopeHeading - 90}deg); color: #00F0FF; font-weight: 900; font-size: 15px;">➔</span>
+              <span style="color: #fff; font-weight: 800; font-family: monospace; font-size: 12px;">${slopePct.toFixed(2)}%</span>
+              <span style="color: #67e8f9; font-size: 11px; font-weight: 600;">${compassText}</span>
             </div>
-            <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
-              <div>Elevation:</div>
-              <div class="font-mono text-cyan-300 text-right font-bold">${elevText}</div>
-              <div>Waterlogging Risk:</div>
-              <div class="font-mono text-right">${Math.round(severity * 100)}%</div>
-            </div>
-          </div>
-        `);
-        heatmapGroup.addLayer(circle);
-      });
+          `,
+          iconSize: [120, 32],
+          iconAnchor: [60, 16],
+        });
+
+        const centerMarker = L.marker([centerLat, centerLng], { icon: centerArrowIcon });
+        heatmapGroup.addLayer(centerMarker);
+      }
 
       // ========================================================
       // PIPELINE DRAINAGE SYSTEM: 100-Square Analysis, Sinks & Perimeter Outlet

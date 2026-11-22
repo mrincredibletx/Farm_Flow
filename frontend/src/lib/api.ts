@@ -13,7 +13,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/v1', '') ||
 
 export async function analyzeTerrain(
   coordinates: [number, number][],
-  gridResolution: number = 20,
+  gridResolution: number = 10,
   soilType: string = 'clay',
   cropType: string = 'Wheat',
   rainfallMm: number = 65.0
@@ -87,11 +87,13 @@ export async function simulateRisk(payload: {
 
 async function generateClientTerrainSimulation(
   coordinates: [number, number][],
-  resolution: number = 20,
+  resolution: number = 10,
   soilType: string = 'clay',
   cropType: string = 'Wheat',
   rainfallMm: number = 65.0
 ): Promise<TerrainAnalysisResponse> {
+  // Always divide the entire drawn area into exactly 10x10 = 100 equal analysis squares (each 1/100 of total area)
+  resolution = 10;
   const lngs = coordinates.map((c) => c[0]);
   const lats = coordinates.map((c) => c[1]);
   const min_lng = Math.min(...lngs);
@@ -99,7 +101,7 @@ async function generateClientTerrainSimulation(
   const min_lat = Math.min(...lats);
   const max_lat = Math.max(...lats);
 
-  // Generate grid sample points
+  // Generate grid sample points (exactly 100 squares: 10x10)
   const points: { lat: number; lng: number; r: number; c: number }[] = [];
   for (let r = 0; r < resolution; r++) {
     const lat = max_lat - (r / (resolution - 1)) * (max_lat - min_lat);
@@ -127,9 +129,6 @@ async function generateClientTerrainSimulation(
   } catch (err) {
     // Graceful offline fallback
   }
-
-  // Divide into exactly 10x10 = 100 spatial cells (each 1/100 of the bounding box area)
-  resolution = 10;
 
   // Regional base elevation heuristic for authentic sea-level realism
   const cLat = (min_lat + max_lat) / 2;
@@ -449,6 +448,11 @@ async function generateClientTerrainSimulation(
   const compassDirs = ['North', 'North-East', 'East', 'South-East', 'South', 'South-West', 'West', 'North-West'];
   const flowDirText = `${compassDirs[Math.floor((flowAngleDeg + 22.5) / 45) % 8]} (${flowAngleDeg.toFixed(1)}°)`;
 
+  const slopeDirIndex = Math.floor((slopeAngleDeg + 22.5) / 45) % 8;
+  const slopeCompass = compassDirs[slopeDirIndex];
+  const fieldSpanM = Math.max(70, Math.hypot(dLatM, dLngM));
+  const dynamicSlopePct = Number(Math.max(0.12, Math.min(3.2, (reliefDropM / fieldSpanM) * 100)).toFixed(2));
+
   const pipeLengthM = Math.max(20, Number(Math.hypot(dLatM, dLngM).toFixed(1)));
   const elevFallM = Math.max(0.2, Number((minCellZ - outletElev).toFixed(2)));
   const slopePct = Math.max(0.8, Number(((elevFallM / pipeLengthM) * 100).toFixed(2)));
@@ -515,8 +519,8 @@ async function generateClientTerrainSimulation(
       high_risk_points_count: highRisk,
       moderate_risk_points_count: modRisk,
       low_risk_points_count: lowRisk,
-      dominant_slope_direction: 'South-East (135°)',
-      average_slope_percent: 1.45,
+      dominant_slope_direction: `${slopeCompass} (${Math.round(slopeAngleDeg)}°)`,
+      average_slope_percent: dynamicSlopePct,
     },
     summary: `True terrain lowest point (Sinkhole) located at ${sinkLat}°N, ${sinkLng}°E (${Number(minCellZ.toFixed(2))}m MSL, ${sinkDepthBelowAvg}m below mean). Gravity pipeline connects directly to perimeter outlet (${outletElev}m MSL).`,
     drainage_routes: routes,
@@ -553,19 +557,19 @@ async function generateClientTerrainSimulation(
       estimated_roi_assessment: 'Estimated 25-35% crop loss prevention across critical depression zones with payback period under 1 season.',
     },
     cut_fill_analysis: {
-      total_cut_m3: 31250.0,
-      total_fill_m3: 26040.0,
+      total_cut_m3: Math.round(31250.0 * (reliefDropM / 2.2)),
+      total_fill_m3: Math.round(26040.0 * (reliefDropM / 2.2)),
       cut_fill_ratio: 1.20,
-      cut_per_acre_m3: 1100.4,
-      cut_per_ha_m3: 2717.4,
-      max_cut_depth_m: 1.15,
-      max_fill_depth_m: 0.95,
-      design_slope_percent: 0.12,
-      design_heading_degrees: 135.0,
-      heading_compass: 'Southeast',
-      estimated_leveling_cost_inr: 2968750,
-      cut_fill_matrix: grid.map((row) => row.map((z) => Number((z - (minElev + 0.6)).toFixed(2)))),
-      design_elevation_grid: grid.map((row, r) => row.map((_, c) => Number((minElev + (1 - r/resolution)*1.8 + (1 - c/resolution)*1.2).toFixed(2)))),
+      cut_per_acre_m3: Number((1100.4 * (reliefDropM / 2.2)).toFixed(1)),
+      cut_per_ha_m3: Number((2717.4 * (reliefDropM / 2.2)).toFixed(1)),
+      max_cut_depth_m: Number((reliefDropM * 0.45).toFixed(2)),
+      max_fill_depth_m: Number((reliefDropM * 0.38).toFixed(2)),
+      design_slope_percent: dynamicSlopePct,
+      design_heading_degrees: Math.round(slopeAngleDeg),
+      heading_compass: slopeCompass,
+      estimated_leveling_cost_inr: Math.round(31250.0 * (reliefDropM / 2.2) * 95),
+      cut_fill_matrix: grid.map((row) => row.map((z) => Number((z - (minElev + reliefDropM * 0.4)).toFixed(2)))),
+      design_elevation_grid: grid.map((row, r) => row.map((_, c) => Number((minElev + (1 - r/resolution)*reliefDropM*0.6 + (1 - c/resolution)*reliefDropM*0.4).toFixed(2)))),
     },
   };
 }
