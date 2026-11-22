@@ -156,13 +156,24 @@ async def analyze_terrain(payload: TerrainRequest):
         center_lng = (bbox["min_lng"] + bbox["max_lng"]) / 2
         live_weather = await weather_service.fetch_current_rainfall(center_lat, center_lng)
 
+        # 1. Pipeline Drainage System (Lowest Sinkhole Khaddha -> Virtual Boundary Escape Outlet)
+        pipeline_drainage = routing_service.calculate_pipeline_drainage(
+            coordinates=coordinates,
+            grid_lats=grid_lats,
+            grid_lngs=grid_lngs,
+            elevation_grid=elevation_grid,
+            mask=mask,
+            bbox=bbox,
+            metrics=metrics
+        )
+
         # Phase II Enhancements
         drainage_routes = None
         risk_simulation = None
         ai_advisory = None
 
         if payload.include_phase2:
-            # 1. A* Drainage Pathfinding
+            # A* Drainage Pathfinding
             drainage_routes = routing_service.calculate_drainage_routes(
                 grid_lats=grid_lats,
                 grid_lngs=grid_lngs,
@@ -173,7 +184,7 @@ async def analyze_terrain(payload: TerrainRequest):
                 metrics=metrics
             )
 
-            # 2. Soil & Precipitation ML Risk Simulation (using live weather rainfall or custom scenario)
+            # Soil & Precipitation ML Risk Simulation (using live weather rainfall or custom scenario)
             effective_rain = payload.rainfall_mm if payload.rainfall_mm and payload.rainfall_mm != 65.0 else live_weather.get("rainfall_event_mm", 65.0)
 
             risk_simulation = risk_service.simulate_scenario(
@@ -184,7 +195,7 @@ async def analyze_terrain(payload: TerrainRequest):
                 relief_meters=metrics.elevation_range
             )
 
-            # 3. LLM AI Advisory (Gemini API with ICAR expert model)
+            # LLM AI Advisory (Gemini API with ICAR expert model)
             ai_advisory = await advisory_service.generate_advisory(
                 metrics=metrics.dict(),
                 soil_type=payload.soil_type or "clay",
@@ -192,7 +203,7 @@ async def analyze_terrain(payload: TerrainRequest):
                 routes=drainage_routes
             )
 
-        # 4. Precision Land Grading & Cut/Fill Optimization
+        # Precision Land Grading & Cut/Fill Optimization
         cut_fill_analysis = cut_fill_service.calculate_cut_fill(
             elevation_grid=elevation_grid_list,
             bbox=bbox,
@@ -210,6 +221,7 @@ async def analyze_terrain(payload: TerrainRequest):
             metrics=metrics,
             summary=summary,
             drainage_routes=drainage_routes,
+            pipeline_drainage=pipeline_drainage,
             risk_simulation=risk_simulation,
             ai_advisory=ai_advisory,
             live_weather=live_weather,

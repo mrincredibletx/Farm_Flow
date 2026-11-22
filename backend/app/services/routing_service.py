@@ -299,3 +299,115 @@ class DrainageRoutingService:
 
         # If goal was unreachable due to strict mask boundaries, return straight line to goal
         return [start, goal]
+
+    def calculate_pipeline_drainage(
+        self,
+        coordinates: List[List[float]],
+        grid_lats: np.ndarray,
+        grid_lngs: np.ndarray,
+        elevation_grid: np.ndarray,
+        mask: np.ndarray,
+        bbox: Dict[str, float],
+        metrics: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Direct Pipeline Drainage System Calculation based on actual topographic depressions:
+        1. Identifies the lowest depression point (Sinkhole / Khaddha) inside the user's field.
+        2. Constructs a virtual outer perimeter boundary (30m buffer).
+        3. Identifies the lowest natural discharge escape outlet on the virtual boundary.
+        4. Calculates direct pipeline specifications (diameter, trench depth, length, slope %, cost).
+        """
+        from shapely.geometry import Polygon
+        rows, cols = elevation_grid.shape
+
+        # 1. Identify true lowest point (Sinkhole / Khaddha) inside field polygon
+        masked_indices = np.argwhere(mask)
+        if len(masked_indices) == 0:
+            masked_indices = np.argwhere(np.ones_like(mask))
+
+        min_idx = min(masked_indices, key=lambda idx: float(elevation_grid[idx[0], idx[1]]))
+        sink_r, sink_c = int(min_idx[0]), int(min_idx[1])
+        sink_lat = float(grid_lats[sink_r, sink_c])
+        sink_lng = float(grid_lngs[sink_r, sink_c])
+        sink_elev = float(elevation_grid[sink_r, sink_c])
+
+        field_elevs = elevation_grid[mask]
+        mean_elev = float(np.mean(field_elevs)) if len(field_elevs) > 0 else sink_elev
+        depth_below_mean = max(0.0, round(mean_elev - sink_elev, 2))
+
+        # 2. Construct virtual outer perimeter boundary (~30-35m buffer)
+        poly_coords = list(coordinates)
+        if poly_coords[0] != poly_coords[-1]:
+            poly_coords.append(poly_coords[0])
+        field_poly = Polygon(poly_coords)
+
+        buffer_deg = 0.0003  # ~33 meters in real-world distance
+        virtual_poly = field_poly.buffer(buffer_deg)
+        virtual_coords = [[round(pt[0], 6), round(pt[1], 6)] for pt in list(virtual_poly.exterior.coords)]
+
+        # 3. Sample points along the virtual outer boundary to find lowest outlet
+        ext_coords = list(virtual_poly.exterior.coords)
+        step = max(1, len(ext_coords) // 24)
+        sampled_virtual_pts = ext_coords[::step]
+
+        outlet_candidates = []
+        for pt in sampled_virtual_pts:
+            p_lng, p_lat = float(pt[0]), float(pt[1])
+            dist_sq = (grid_lngs - p_lng)**2 + (grid_lats - p_lat)**2
+            cr, cc = np.unravel_index(np.argmin(dist_sq), dist_sq.shape)
+            cell_elev = float(elevation_grid[cr, cc])
+            outlet_candidates.append({
+                "lng": round(p_lng, 6),
+                "lat": round(p_lat, 6),
+                "elev": cell_elev,
+                "r": int(cr),
+                "c": int(cc)
+            })
+
+        best_outlet = min(outlet_candidates, key=lambda o: o["elev"])
+        outlet_lng = best_outlet["lng"]
+        outlet_lat = best_outlet["lat"]
+        outlet_elev = best_outlet["elev"]
+
+        # 4. Pipeline engineering specs
+        mean_lat = (sink_lat + outlet_lat) / 2.0
+        lat_rad = math.radians(mean_lat)
+        dy_m = (outlet_lat - sink_lat) * 111320.0
+        dx_m = (outlet_lng - sink_lng) * (111320.0 * math.cos(lat_rad))
+        pipe_length = round(math.hypot(dx_m, dy_m), 1)
+
+        natural_fall = sink_elev - outlet_elev
+        if natural_fall > 0.15:
+            elev_fall = round(natural_fall, 2)
+        else:
+            # Standard ICAR / FAO minimum slope 0.8% grade for agricultural sub-surface drainage
+            elev_fall = round(max(0.2, pipe_length * 0.008), 2)
+
+        slope_pct = round((elev_fall / max(pipe_length, 1.0)) * 100.0, 2)
+        pipe_diameter = 200  # 200 mm / 8-inch
+        pipe_material = "200mm (8-inch) Perforated Corrugated HDPE Pipe with Non-Woven Geotextile Sock"
+        avg_trench_depth = round(max(1.2, depth_below_mean + 0.4), 2)
+        trench_width = 0.45
+        excavation_vol = round(pipe_length * trench_width * avg_trench_depth, 1)
+        estimated_cost = round(pipe_length * 630.0, 0)
+
+        return {
+            "sink_point": [round(sink_lng, 6), round(sink_lat, 6)],
+            "sink_elevation_m": round(sink_elev, 2),
+            "sink_depth_below_mean_m": depth_below_mean,
+            "outlet_point": [round(outlet_lng, 6), round(outlet_lat, 6)],
+            "outlet_elevation_m": round(outlet_elev, 2),
+            "virtual_boundary_coordinates": virtual_coords,
+            "pipeline_coordinates": [
+                [round(sink_lng, 6), round(sink_lat, 6)],
+                [round(outlet_lng, 6), round(outlet_lat, 6)]
+            ],
+            "length_meters": pipe_length,
+            "elevation_drop_meters": elev_fall,
+            "slope_percent": slope_pct,
+            "pipe_diameter_mm": pipe_diameter,
+            "recommended_pipe_material": pipe_material,
+            "avg_trench_depth_m": avg_trench_depth,
+            "excavation_volume_m3": excavation_vol,
+            "estimated_cost_inr": estimated_cost
+        }

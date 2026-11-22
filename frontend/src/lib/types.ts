@@ -84,6 +84,24 @@ export interface AIAdvisoryResult {
   full_text?: string;
 }
 
+export interface PipelineDrainageSystem {
+  sink_point: [number, number]; // [lng, lat]
+  sink_elevation_m: number;
+  sink_depth_below_mean_m: number;
+  outlet_point: [number, number]; // [lng, lat]
+  outlet_elevation_m: number;
+  virtual_boundary_coordinates: [number, number][]; // [[lng, lat], ...]
+  pipeline_coordinates: [number, number][]; // [[lng, lat], [lng, lat]]
+  length_meters: number;
+  elevation_drop_meters: number;
+  slope_percent: number;
+  pipe_diameter_mm: number;
+  recommended_pipe_material: string;
+  avg_trench_depth_m: number;
+  excavation_volume_m3: number;
+  estimated_cost_inr: number;
+}
+
 export interface TerrainAnalysisResponse {
   status: string;
   bounding_box: BoundingBox;
@@ -105,7 +123,8 @@ export interface TerrainAnalysisResponse {
     is_live: boolean;
   };
   summary?: string;
-  // Phase II fields
+  // Drainage Pipeline & Core Engineering
+  pipeline_drainage?: PipelineDrainageSystem;
   drainage_routes?: DrainageRoute[];
   risk_simulation?: RiskSimulationResult;
   ai_advisory?: AIAdvisoryResult;

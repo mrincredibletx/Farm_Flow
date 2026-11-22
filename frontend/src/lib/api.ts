@@ -1,5 +1,6 @@
 import {
   TerrainAnalysisResponse,
+  PipelineDrainageSystem,
   SampleField,
   SearchResult,
   BoundingBox,
@@ -116,10 +117,9 @@ function generateClientTerrainSimulation(
       const u = (lng - min_lng) / (max_lng - min_lng || 1);
       const v = (lat - min_lat) / (max_lat - min_lat || 1);
 
-      // Natural micro-grade and swale
-      const grade = (1.0 - u) * 2.2 + (1.0 - v) * 1.5;
-      const swale = -1.6 * Math.exp(-(((u - 0.45) ** 2) / 0.03 + ((v - 0.42) ** 2) / 0.04));
-      const z = Number((baseElev + grade + swale).toFixed(2));
+      // Natural regional terrain slope
+      const slopeZ = (1.0 - u) * 0.85 + (1.0 - v) * 0.65;
+      const z = Number((baseElev + slopeZ).toFixed(2));
       rowElevs.push(z);
 
       if (z < minElev) minElev = z;
@@ -211,24 +211,100 @@ function generateClientTerrainSimulation(
     }
   }
 
+  // Dynamically detect real sinkhole (lowest elevation cell in the grid)
+  let minCellZ = Infinity;
+  let minCellR = 0;
+  let minCellC = 0;
+  for (let r = 0; r < resolution; r++) {
+    for (let c = 0; c < resolution; c++) {
+      if (grid[r][c] < minCellZ) {
+        minCellZ = grid[r][c];
+        minCellR = r;
+        minCellC = c;
+      }
+    }
+  }
+
+  const sinkLng = Number((min_lng + (minCellC / (resolution - 1)) * (max_lng - min_lng)).toFixed(6));
+  const sinkLat = Number((max_lat - (minCellR / (resolution - 1)) * (max_lat - min_lat)).toFixed(6));
+  const avgElev = Number(((minElev + maxElev) / 2).toFixed(2));
+  const sinkDepthBelowAvg = Number(Math.max(0.1, avgElev - minCellZ).toFixed(2));
+
+  // Compute 30m virtual boundary (buffer ~ 0.0003 deg) around field
+  const bufDeg = 0.0003;
+  let virtualBoundaryCoords: [number, number][] = [];
+  if (coordinates && coordinates.length >= 3) {
+    const cLng = (min_lng + max_lng) / 2;
+    const cLat = (min_lat + max_lat) / 2;
+    virtualBoundaryCoords = coordinates.map(([lng, lat]) => {
+      const dLng = lng - cLng;
+      const dLat = lat - cLat;
+      const dist = Math.hypot(dLng, dLat) || 1e-5;
+      return [
+        Number((lng + (dLng / dist) * bufDeg).toFixed(6)),
+        Number((lat + (dLat / dist) * bufDeg).toFixed(6)),
+      ];
+    });
+  } else {
+    virtualBoundaryCoords = [
+      [Number((min_lng - bufDeg).toFixed(6)), Number((min_lat - bufDeg).toFixed(6))],
+      [Number((max_lng + bufDeg).toFixed(6)), Number((min_lat - bufDeg).toFixed(6))],
+      [Number((max_lng + bufDeg).toFixed(6)), Number((max_lat + bufDeg).toFixed(6))],
+      [Number((min_lng - bufDeg).toFixed(6)), Number((max_lat + bufDeg).toFixed(6))],
+    ];
+  }
+
+  // Find natural downhill outlet on virtual boundary
+  const outletLng = Number((sinkLng + (minCellC >= resolution / 2 ? bufDeg * 1.5 : -bufDeg * 1.5)).toFixed(6));
+  const outletLat = Number((sinkLat + (minCellR <= resolution / 2 ? -bufDeg * 1.5 : bufDeg * 1.5)).toFixed(6));
+  const outletElev = Number(Math.max(10, minCellZ - 0.45).toFixed(2));
+
+  // Distance between sinkhole and outlet in meters
+  const dLatM = (outletLat - sinkLat) * 111000;
+  const dLngM = (outletLng - sinkLng) * 111000 * Math.cos((sinkLat * Math.PI) / 180);
+  const pipeLengthM = Math.max(25, Number(Math.hypot(dLatM, dLngM).toFixed(1)));
+  const elevFallM = Math.max(0.2, Number((minCellZ - outletElev).toFixed(2)));
+  const slopePct = Math.max(0.8, Number(((elevFallM / pipeLengthM) * 100).toFixed(2)));
+  const avgTrenchDepthM = 0.9;
+  const excavationVolM3 = Number((pipeLengthM * 0.6 * avgTrenchDepthM).toFixed(1));
+  const estimatedCostInr = Math.round(pipeLengthM * 180 + excavationVolM3 * 120);
+
+  const pipelineDrainage: PipelineDrainageSystem = {
+    sink_point: [sinkLng, sinkLat],
+    sink_elevation_m: Number(minCellZ.toFixed(2)),
+    sink_depth_below_mean_m: sinkDepthBelowAvg,
+    outlet_point: [outletLng, outletLat],
+    outlet_elevation_m: outletElev,
+    virtual_boundary_coordinates: virtualBoundaryCoords,
+    pipeline_coordinates: [
+      [sinkLng, sinkLat],
+      [Number(((sinkLng + outletLng) / 2).toFixed(6)), Number(((sinkLat + outletLat) / 2).toFixed(6))],
+      [outletLng, outletLat],
+    ],
+    length_meters: pipeLengthM,
+    elevation_drop_meters: elevFallM,
+    slope_percent: slopePct,
+    pipe_diameter_mm: 200,
+    recommended_pipe_material: 'Dual-Wall Corrugated HDPE Subsurface Pipe',
+    avg_trench_depth_m: avgTrenchDepthM,
+    excavation_volume_m3: excavationVolM3,
+    estimated_cost_inr: estimatedCostInr,
+  };
+
   const routes = [
     {
-      route_id: 'route-1',
-      sink_point: [min_lng + (max_lng - min_lng) * 0.45, min_lat + (max_lat - min_lat) * 0.42] as [number, number],
-      outlet_point: [max_lng, min_lat + (max_lat - min_lat) * 0.15] as [number, number],
-      path_coordinates: [
-        [min_lng + (max_lng - min_lng) * 0.45, min_lat + (max_lat - min_lat) * 0.42],
-        [min_lng + (max_lng - min_lng) * 0.65, min_lat + (max_lat - min_lat) * 0.30],
-        [max_lng, min_lat + (max_lat - min_lat) * 0.15],
-      ] as [number, number][],
-      path_elevations: [minElev, minElev + 0.4, minElev - 0.5],
-      length_meters: 185.0,
-      elevation_drop_meters: 0.9,
-      slope_percent: 0.85,
-      excavation_volume_m3: 138.8,
-      estimated_cost_inr: 24984,
-      recommended_ditch_type: 'Perforated French Drain with Gravel Bed',
-      severity: 0.88,
+      route_id: 'pipeline-1',
+      sink_point: [sinkLng, sinkLat] as [number, number],
+      outlet_point: [outletLng, outletLat] as [number, number],
+      path_coordinates: pipelineDrainage.pipeline_coordinates,
+      path_elevations: [minCellZ, Number(((minCellZ + outletElev) / 2).toFixed(2)), outletElev],
+      length_meters: pipeLengthM,
+      elevation_drop_meters: elevFallM,
+      slope_percent: slopePct,
+      excavation_volume_m3: excavationVolM3,
+      estimated_cost_inr: estimatedCostInr,
+      recommended_ditch_type: '200mm Corrugated HDPE Pipe with Gravel Envelope',
+      severity: 0.92,
     },
   ];
 
@@ -239,11 +315,12 @@ function generateClientTerrainSimulation(
     waterlogging_zones: zones,
     zone_details: zoneDetails,
     flow_vectors: clientFlowVectors,
+    pipeline_drainage: pipelineDrainage,
     metrics: {
       min_elevation: minElev,
       max_elevation: maxElev,
       elevation_range: Number(elevRange.toFixed(2)),
-      average_elevation: Number(((minElev + maxElev) / 2).toFixed(2)),
+      average_elevation: avgElev,
       total_area_sqm: 115000,
       total_area_acres: 28.4,
       total_area_hectares: 11.5,
@@ -253,7 +330,7 @@ function generateClientTerrainSimulation(
       dominant_slope_direction: 'South-East (135°)',
       average_slope_percent: 1.45,
     },
-    summary: `Identified ${highRisk} critical pooling depressions in the field with severe waterlogging risk. Surface runoff flows toward South-East (135°).`,
+    summary: `True terrain lowest point (Sinkhole) located at ${sinkLat}°N, ${sinkLng}°E (${Number(minCellZ.toFixed(2))}m MSL, ${sinkDepthBelowAvg}m below mean). Gravity pipeline connects directly to perimeter outlet (${outletElev}m MSL).`,
     drainage_routes: routes,
     risk_simulation: {
       soil_type: soilType,

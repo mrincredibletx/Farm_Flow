@@ -67,8 +67,42 @@ export function generateAgronomicPDFReport(data: TerrainAnalysisResponse) {
     currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
+  // Section 1.5: Direct HDPE Pipeline Drainage System
+  if (data.pipeline_drainage) {
+    const pipe = data.pipeline_drainage;
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('2. Direct HDPE Pipeline Drainage Engineering', 14, currentY);
+    currentY += 6;
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Component', 'Engineering Value', 'Design Rationale / Standard']],
+      body: [
+        ['Field Sinkhole (Lowest Depression)', `${pipe.sink_elevation_m.toFixed(2)} m MSL`, `Depression depth: ${pipe.sink_depth_below_mean_m.toFixed(2)}m below field mean`],
+        ['Discharge Outlet (Virtual Boundary)', `${pipe.outlet_elevation_m.toFixed(2)} m MSL`, `Located on 30m perimeter buffer with ${pipe.elevation_drop_meters.toFixed(2)}m gravity head fall`],
+        ['Pipeline Length', `${pipe.length_meters.toFixed(1)} meters`, 'Direct linear route from sinkhole to lowest perimeter boundary'],
+        ['Pipe Material & Size', `${pipe.pipe_diameter_mm}mm Dual-Wall Corrugated HDPE`, 'Perforated corrugated HDPE with geotextile wrap & gravel bedding'],
+        ['Gravity Slope Grade', `${pipe.slope_percent.toFixed(2)}% Grade`, pipe.slope_percent >= 0.8 ? 'Compliant with ICAR minimum self-cleansing slope (>= 0.8%)' : 'Slight gradient; smooth interior HDPE recommended'],
+        ['Trench Earthwork Excavation', `${pipe.excavation_volume_m3.toFixed(1)} m³ (avg depth ${pipe.avg_trench_depth_m.toFixed(2)}m)`, 'Mechanical mini-excavator ditching with 0.6m trench width'],
+        ['Estimated Total Installation Cost', `INR ₹${Math.round(pipe.estimated_cost_inr).toLocaleString()}`, 'Includes 200mm HDPE pipe, trenching, gravel envelope & labor'],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [8, 145, 178], textColor: 255, fontSize: 9, fontStyle: 'bold' },
+      styles: { fontSize: 8.5, cellPadding: 3 },
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  }
+
   // Section 2: Drainage Channel Specifications
-  if (routes.length > 0) {
+  if (routes.length > 0 && !data.pipeline_drainage) {
     if (currentY > 230) {
       doc.addPage();
       currentY = 20;

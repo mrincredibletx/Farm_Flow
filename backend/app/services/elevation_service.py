@@ -189,14 +189,9 @@ class ElevationService:
             for i, (lat, lng) in enumerate(points):
                 x_off = (lng - c_lng) * m_per_deg_lng
                 y_off = (lat - c_lat) * m_per_deg_lat
-                # Physical regional plane
+                # Physical regional plane from real landscape gradient
                 plane_z = base_z + gx * x_off + gy * y_off
-                # Gentle continuous micro-topographic wave (+/- 0.06m) to represent natural furrow/swale undulations
-                u = (lng - bbox["min_lng"]) / lng_span
-                v = (lat - bbox["min_lat"]) / lat_span
-                micro_wave = 0.05 * math.sin(u * math.pi * 3.0) * math.cos(v * math.pi * 2.5)
-
-                enhanced.append(round(plane_z + micro_wave, 2))
+                enhanced.append(round(plane_z, 2))
 
             return enhanced
 

@@ -84,6 +84,23 @@ class ZoneDetail(BaseModel):
     depression_depth: float
     slope_percent: float
 
+class PipelineDrainageSystem(BaseModel):
+    sink_point: List[float]  # [lng, lat]
+    sink_elevation_m: float
+    sink_depth_below_mean_m: float
+    outlet_point: List[float]  # [lng, lat]
+    outlet_elevation_m: float
+    virtual_boundary_coordinates: List[List[float]]  # [[lng, lat], ...]
+    pipeline_coordinates: List[List[float]]  # [[lng, lat], [lng, lat]]
+    length_meters: float
+    elevation_drop_meters: float
+    slope_percent: float
+    pipe_diameter_mm: int
+    recommended_pipe_material: str
+    avg_trench_depth_m: float
+    excavation_volume_m3: float
+    estimated_cost_inr: float
+
 class DrainageRoute(BaseModel):
     route_id: str
     sink_point: List[float]  # [lng, lat]
@@ -133,6 +150,7 @@ class TerrainResponse(BaseModel):
     summary: Optional[str] = None
     # Phase II Extensions
     drainage_routes: Optional[List[DrainageRoute]] = None
+    pipeline_drainage: Optional[PipelineDrainageSystem] = None
     risk_simulation: Optional[RiskSimulationResult] = None
     ai_advisory: Optional[AIAdvisoryResult] = None
     live_weather: Optional[Dict[str, Any]] = None
