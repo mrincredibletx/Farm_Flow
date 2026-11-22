@@ -39,6 +39,7 @@ interface SidebarProps {
   analysisData: TerrainAnalysisResponse | null;
   userLocation?: { lat: number; lng: number } | null;
   onLocateDevice?: () => void;
+  onCenterUEM?: () => void;
   onOpenGridInspector: () => void;
   onOpenElevationProfile?: () => void;
 }
@@ -54,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   analysisData,
   userLocation,
   onLocateDevice,
+  onCenterUEM,
   onOpenGridInspector,
   onOpenElevationProfile,
 }) => {
@@ -138,34 +140,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Main Scrollable Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Device GPS Location Card */}
+        {/* Campus & Device GPS Location Card */}
         <div className="p-3 rounded-xl bg-slate-900/60 border border-cyan-500/20 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-200 flex items-center gap-1.5">
               <Compass className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Current Device Location</span>
+              <span>Default Landing: UEM Jaipur</span>
             </span>
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
-              ● Live GPS
+            <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+              ● 303807 Guard House
             </span>
           </div>
 
           <div className="flex items-center justify-between text-[11px] p-2 rounded-lg bg-slate-950/60 border border-white/5">
-            <span className="text-slate-400">Coordinates:</span>
+            <span className="text-slate-400">Campus Entry:</span>
             <span className="font-mono text-cyan-300 font-bold">
-              {userLocation
-                ? `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`
-                : 'Detecting device GPS...'}
+              27.21400° N, 75.70110° E
             </span>
           </div>
 
-          {onLocateDevice && (
+          {onCenterUEM && (
             <button
-              onClick={onLocateDevice}
+              onClick={onCenterUEM}
               className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold glass-panel hover:bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 flex items-center justify-center gap-2 transition-all shadow-sm"
             >
               <Compass className="w-3.5 h-3.5" />
-              <span>Re-Center Map to My Location</span>
+              <span>Center to UEM Guard House (303807)</span>
+            </button>
+          )}
+
+          {userLocation && onLocateDevice && (
+            <button
+              onClick={onLocateDevice}
+              className="w-full py-1 text-xs text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <span>Re-Center to My Device GPS ({userLocation.lat.toFixed(3)}, {userLocation.lng.toFixed(3)})</span>
             </button>
           )}
         </div>

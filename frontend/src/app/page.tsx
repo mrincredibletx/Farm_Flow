@@ -51,7 +51,13 @@ export default function Home() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<TerrainAnalysisResponse | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  // Default Landing Location: UEM Jaipur Guard House, PIN 303807
+  const UEM_JAIPUR_GUARD_HOUSE = {
+    lat: 27.2140,
+    lng: 75.7011,
+  };
+
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(UEM_JAIPUR_GUARD_HOUSE);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [overlayOpacity, setOverlayOpacity] = useState(0.8);
   const [showSinkMarkers, setShowSinkMarkers] = useState(true);
@@ -63,7 +69,7 @@ export default function Home() {
   const [profilePoints, setProfilePoints] = useState<ElevationProfilePoint[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // Automatically locate user's device on mount
+  // Automatically detect user's device coordinates for the GPS badge (without overriding UEM Jaipur default landing)
   const locateUserDevice = () => {
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -73,7 +79,6 @@ export default function Home() {
             lng: position.coords.longitude,
           };
           setUserLocation(loc);
-          setSelectedLocation(loc);
         },
         async (error) => {
           console.warn('Browser geolocation failed or permission denied, using IP fallback:', error);
@@ -84,7 +89,6 @@ export default function Home() {
               if (data.latitude && data.longitude) {
                 const loc = { lat: data.latitude, lng: data.longitude };
                 setUserLocation(loc);
-                setSelectedLocation(loc);
               }
             }
           } catch (e) {
@@ -94,6 +98,18 @@ export default function Home() {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
+  };
+
+  const handleLocateDevice = () => {
+    if (userLocation) {
+      setSelectedLocation(userLocation);
+    } else {
+      locateUserDevice();
+    }
+  };
+
+  const handleCenterUEM = () => {
+    setSelectedLocation({ lat: 27.2140, lng: 75.7011 });
   };
 
   useEffect(() => {
@@ -170,7 +186,8 @@ export default function Home() {
           isAnalyzing={isAnalyzing}
           analysisData={analysisData}
           userLocation={userLocation}
-          onLocateDevice={locateUserDevice}
+          onLocateDevice={handleLocateDevice}
+          onCenterUEM={handleCenterUEM}
           onOpenGridInspector={() => setIsGridInspectorOpen(true)}
           onOpenElevationProfile={() => {
             if (profilePoints.length > 0) {

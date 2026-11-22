@@ -62,17 +62,17 @@ async def get_sample_fields():
         "fields": [
             {
                 "id": "uem-jaipur-demo",
-                "name": "UEM Jaipur Agritech Research Plot",
-                "location": "Jaipur, Rajasthan",
-                "description": "Undulating terrain with natural run-off channels near the Aravalli foothills.",
-                "center": [75.9255, 26.9832], # [lng, lat]
+                "name": "UEM Jaipur Guard House & Agritech Plot",
+                "location": "UEM Jaipur (PIN 303807), Sikar Road, Jaipur",
+                "description": "Agricultural research parcel adjacent to the UEM Jaipur Guard House (PIN 303807), Sikar Road.",
+                "center": [75.7011, 27.2140], # [lng, lat]
                 "zoom": 17,
                 "coordinates": [
-                    [75.9238, 26.9845],
-                    [75.9272, 26.9848],
-                    [75.9278, 26.9818],
-                    [75.9242, 26.9815],
-                    [75.9238, 26.9845]
+                    [75.6995, 27.2155],
+                    [75.7028, 27.2158],
+                    [75.7032, 27.2125],
+                    [75.6998, 27.2122],
+                    [75.6995, 27.2155]
                 ]
             },
             {

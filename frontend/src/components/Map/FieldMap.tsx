@@ -94,9 +94,9 @@ export const FieldMap: React.FC<FieldMapProps> = ({
   useEffect(() => {
     if (!L || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    const initialLat = 26.9832;
-    const initialLng = 75.9255;
-    const initialZoom = 16;
+    const initialLat = 27.2140;
+    const initialLng = 75.7011;
+    const initialZoom = 17;
 
     const map = L.map(mapContainerRef.current, {
       center: [initialLat, initialLng],
@@ -106,6 +106,35 @@ export const FieldMap: React.FC<FieldMapProps> = ({
 
     // Custom Zoom control at bottom right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // Default Landmark Pin: UEM Jaipur Guard House (303807)
+    const uemIcon = L.divIcon({
+      className: 'uem-guard-house-pin',
+      html: `
+        <div style="position: relative; display: flex; flex-direction: column; align-items: center; pointer-events: auto;">
+          <div style="background: rgba(15, 23, 42, 0.95); color: #38BDF8; font-weight: 800; font-size: 11px; padding: 4px 10px; border-radius: 8px; border: 1.5px solid #00F0FF; box-shadow: 0 4px 16px rgba(0, 240, 255, 0.4); white-space: nowrap; margin-bottom: 5px; display: flex; align-items: center; gap: 4px;">
+            <span>🏛️</span>
+            <span>UEM Jaipur Guard House</span>
+            <span style="background: #0284C7; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 4px;">303807</span>
+          </div>
+          <div style="width: 14px; height: 14px; border-radius: 50%; background: #00F0FF; border: 2.5px solid #FFFFFF; box-shadow: 0 0 16px #00F0FF;"></div>
+        </div>
+      `,
+      iconSize: [210, 44],
+      iconAnchor: [105, 38],
+    });
+    const uemMarker = L.marker([initialLat, initialLng], { icon: uemIcon }).addTo(map);
+    uemMarker.bindPopup(`
+      <div class="p-1.5 text-xs text-slate-200">
+        <div class="font-bold text-cyan-400 flex items-center gap-1.5 text-sm">
+          <span>🏛️ UEM Jaipur Guard House</span>
+        </div>
+        <div class="text-[11px] text-emerald-400 font-semibold mt-0.5">PIN Code: 303807</div>
+        <div class="text-[10px] text-slate-300 mt-1">University of Engineering & Management, Gurukul Campus, Sikar Road, Near Udaipuria Mod, Jaipur, Rajasthan 303807</div>
+        <div class="text-[11px] text-cyan-300 font-mono mt-1 font-bold">27.2140° N, 75.7011° E</div>
+        <p class="text-[10px] text-slate-400 mt-1">Default landing location initialized. Click <b>"Draw Boundary"</b> to map your agricultural land.</p>
+      </div>
+    `);
 
     // Initial Satellite Tile layer (Esri World Imagery)
     const satTiles = L.tileLayer(
